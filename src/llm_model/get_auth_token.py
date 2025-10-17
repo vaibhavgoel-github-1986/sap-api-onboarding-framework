@@ -25,6 +25,7 @@ def get_azure_token() -> Optional[str]:
 
     # Check if cached token is still valid
     if _cached_azure_token and time.time() < _azure_token_expiry:
+        logger.info("Using cached token")
         return _cached_azure_token
 
     # Get Azure credentials from config
@@ -42,7 +43,7 @@ def get_azure_token() -> Optional[str]:
     if token:
         _cached_azure_token = token["access_token"]
         expires_in = token.get("expires_in", 3600)
-        _azure_token_expiry = time.time() + expires_in - 600
+        _azure_token_expiry = time.time() + expires_in - 600  # Refresh 10 mins before expiry        
         return _cached_azure_token
     
     return None
@@ -65,13 +66,13 @@ def _fetch_token(client_id: str, client_secret: str, token_url: str, service_nam
         response = requests.post(token_url, headers=headers, data=payload)
         response.raise_for_status()
         response_data = response.json()
-        logger.info(f"✅ {service_name} token fetched successfully")
+        logger.info(f"{service_name} token fetched successfully")
         return response_data
 
     except requests.exceptions.HTTPError as http_err:
-        logger.error(f"❌ {service_name} HTTP error: {http_err}")
+        logger.error(f"{service_name} HTTP error: {http_err}")
     except Exception as err:
-        logger.error(f"❌ {service_name} error: {err}")
+        logger.error(f"{service_name} error: {err}")
         traceback.print_exc()
 
     return None

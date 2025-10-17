@@ -1,5 +1,5 @@
 import sys, os
-from typing import Optional 
+from typing import Literal, Optional 
 from dotenv import load_dotenv
 
 # Add project root to path
@@ -19,11 +19,11 @@ def call_sap_api_generic(
     http_method: str,
     service_name: str,
     entity_name: str,
+    system_id: str,
     service_namespace: Optional[str] = None,
-    odata_version: str = "v4",
+    odata_version: Literal["v2", "v4"] = "v4",
     query_parameters: Optional[dict] = None,
     request_body: Optional[dict] = None,
-    system_id: Optional[str] = None,
     client_id: Optional[int] = None,
     username: Optional[str] = None,
     password: Optional[str] = None,

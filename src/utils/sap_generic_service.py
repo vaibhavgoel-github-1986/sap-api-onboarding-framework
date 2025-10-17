@@ -2,7 +2,6 @@
 Generic SAP API service for unified OData operations
 """
 
-import logging
 import os, sys
 import time
 from typing import Literal, Optional
@@ -19,11 +18,10 @@ from src.utils.sap_api_client import (
 )
 from src.utils.sap_common import handle_sap_exceptions
 from src.models.sap_tech import GenericAPIResponse
+from src.utils.logger import logger
 
 # Load environment variables
 load_dotenv()
-
-logger = logging.getLogger(__name__)
 
 class SAPGenericService:
     """Service class for generic SAP API operations"""
@@ -66,10 +64,10 @@ class SAPGenericService:
             odata_version: OData version - v2 or v4 (optional, defaults to v4)
             query_parameters: Dictionary of query parameters (e.g., $filter, $select, etc.)
             request_body: Request body data for POST/PUT/PATCH operations
-            system_id: SAP system ID (optional, uses config default)
-            sap_client: SAP client number (optional, uses config default)
-            sap_username: SAP username (optional, uses config default)
-            sap_password: SAP password (optional, uses config default)
+            system_id: SAP system ID (optional)
+            client_id: SAP client number (optional)
+            username: SAP username (optional)
+            password: SAP password (optional)
 
         Returns:
             GenericAPIResponse: Comprehensive response with request/response details
@@ -85,18 +83,8 @@ class SAPGenericService:
                 detail=f"Invalid HTTP method '{http_method}'. Supported: {', '.join(valid_methods)}",
             )
 
-        # Use provided system_id or fallback to config
-        system_id = (system_id or "D2A").upper()
-        username = username or os.getenv("SAP_USERNAME")
-        password = password or os.getenv("SAP_PASSWORD")
-
         if not system_id:
             raise HTTPException(status_code=400, detail="Please provide SAP system ID")
-
-        if not username or not password:
-            raise HTTPException(
-                status_code=401, detail="Please provide SAP Credentials"
-            )
 
         if not service_name:
             raise HTTPException(status_code=400, detail="Service name is required")
@@ -116,7 +104,7 @@ class SAPGenericService:
 
         # Initialize SAP API client
         client = SAPApiClient(
-            client_id=client_id if client_id is not None else 120,
+            client_id=client_id,
             system_id=system_id,
             username=username,
             password=password,
@@ -125,9 +113,7 @@ class SAPGenericService:
             odata_version=odata_version
         )
 
-        logger.info(
-            f"Making {http_method} request to SAP system: {system_id}, service: {service_name} -> {service_namespace}, entity: {entity_name}"
-        )
+        logger.info(f"SAP API call: {http_method} {system_id}/{service_name}/{entity_name}")
 
         # Build complete URL
         service_path = client.get_service_path()
@@ -174,17 +160,15 @@ class SAPGenericService:
                 if not key.startswith("$"):
                     allowed_post_params[key] = value
                 else:
-                    logger.warning(
-                        f"Filtering out OData parameter '{key}' for POST request as it's not allowed by SAP"
-                    )
+                    logger.warning(f"Filtered OData parameter '{key}' for POST request")
             query_parameters = allowed_post_params
-            logger.info(f"POST request - filtered query parameters: {query_parameters}")
+            logger.info(f"POST query parameters: {query_parameters}")
         else:
             query_parameters = transformed_params
 
         # Log the request details
         if query_parameters:
-            logger.info(f"Query parameters: {query_parameters}")
+            logger.info(f"Query params: {query_parameters}")
         if request_body and http_method in ["POST", "PUT", "PATCH"]:
             logger.info(f"Request body: {request_body}")
 
@@ -199,6 +183,7 @@ class SAPGenericService:
             )
 
             execution_time_ms = int((time.time() - start_time) * 1000)
+            logger.info(f"SAP API response status: {response.status_code} in {execution_time_ms} ms")
 
             # Capture the actual query parameters that were sent (including SAP client additions)
             final_query_params = query_parameters.copy()
@@ -260,7 +245,7 @@ class SAPGenericService:
 
         except SAPServerException as e:
             execution_time_ms = int((time.time() - start_time) * 1000)
-            logger.error(f"SAP server error in generic API call: {e}")
+            logger.error(f"SAP server error: {e}")
             return self._build_error_response(
                 http_method,
                 service_name,
@@ -276,7 +261,7 @@ class SAPGenericService:
             )
         except SAPAuthorizationException as e:
             execution_time_ms = int((time.time() - start_time) * 1000)
-            logger.error(f"SAP authorization error in generic API call: {e}")
+            logger.error(f"SAP authorization error: {e}")
             return self._build_error_response(
                 http_method,
                 service_name,
@@ -292,8 +277,7 @@ class SAPGenericService:
             )
         except Exception as e:
             execution_time_ms = int((time.time() - start_time) * 1000)
-            error_message = f"Generic SAP API call failed: {str(e)}"
-            logger.error(error_message)
+            logger.error(f"SAP API call failed: {str(e)}")
             return self._build_error_response(
                 http_method,
                 service_name,

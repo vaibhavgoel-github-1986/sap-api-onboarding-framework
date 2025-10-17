@@ -1,14 +1,16 @@
+from http.client import HTTPException
+import os
 import requests
 from requests.auth import HTTPBasicAuth
 import xml.etree.ElementTree as ET
+from dotenv import load_dotenv
 
-# import pandas as pd
 import json
-import logging
 from typing import Dict, List, Optional, Literal
+from src.utils.logger import logger
 
-# Get the logger from our centralized configuration
-logger = logging.getLogger(__name__)
+# Load environment variables
+load_dotenv()
 
 SAP_SYSTEM_CONFIG = {
     "QHA": {
@@ -83,7 +85,7 @@ class SAPApiClient:
     def __init__(
         self,
         system_id: str,
-        client_id: int,
+        client_id: Optional[int] = None,
         username: Optional[str] = None,
         password: Optional[str] = None,
         service_name: Optional[str] = None,
@@ -110,8 +112,8 @@ class SAPApiClient:
         # Use provided system config or default
         self.system_id = system_id.upper()
         self.client_id = client_id or SAP_SYSTEM_CONFIG[self.system_id]["client_id"]
-        self.username = username
-        self.password = password
+        self.username = username or os.getenv("SAP_USER_ID") or os.getenv("SAP_USERNAME")
+        self.password = password or os.getenv("SAP_PASSWORD")
         
         self.timeout = timeout
         self.odata_version = odata_version
@@ -120,7 +122,7 @@ class SAPApiClient:
 
         if self.system_id not in SAP_SYSTEM_CONFIG:
             raise ValueError(f"System ID '{self.system_id}' not found in configuration")
-
+            
         if not self.username or not self.password:
             raise ValueError("Please provide SAP Credentials")
 
@@ -134,17 +136,12 @@ class SAPApiClient:
         else:
             self.base_path = base_path
 
-        logger.info(
-            "Initialized SAP API Client: %s, oData %s, Client %s",
-            self.hostname,
-            odata_version,
-            self.client_id,
-        )
+        logger.info(f"SAP API Client initialized: {self.hostname} ({odata_version}) Client: {self.client_id}")
         if service_name:
-            logger.info("Using service name: %s", service_name)
+            logger.debug(f"Service: {service_name}")
             if odata_version == "v4":
                 service_path = self.get_service_path()
-                logger.info("Generated service path: %s", service_path)
+                logger.debug(f"Service path: {service_path}")
 
     def build_entity_key(self, **key_values) -> str:
         """
@@ -779,9 +776,9 @@ class SAPApiClient:
             if self.odata_version == "v2" and "/$metadata" not in service_url:
                 csrf_params["$format"] = "json"
 
-            logger.info(f"Fetching CSRF token from {service_url}")
-            logger.debug(f"CSRF request headers: {csrf_headers}")
-            logger.debug(f"CSRF request params: {csrf_params}")
+            logger.debug(f"Fetching CSRF token from {service_url}")
+            logger.debug(f"CSRF headers: {csrf_headers}")
+            logger.debug(f"CSRF params: {csrf_params}")
 
             response = requests.get(
                 url=service_url,
@@ -791,13 +788,11 @@ class SAPApiClient:
                 timeout=self.timeout,
             )
 
-            logger.info(f"CSRF token fetch response: {response.status_code}")
+            logger.debug(f"CSRF token response: {response.status_code}")
 
             # Check if we got a permission error during CSRF fetch
             if response.status_code == 403:
-                logger.error(
-                    f"Access denied when fetching CSRF token from {service_url}"
-                )
+                logger.error(f"Access denied for CSRF token from {service_url}")
                 error_detail = "CSRF token fetch failed - insufficient permissions"
 
                 # Try to get more detailed error from response
@@ -846,9 +841,7 @@ class SAPApiClient:
             # Extract session cookies for subsequent requests
             session_cookies = response.cookies.get_dict()
 
-            logger.info(
-                f"Successfully retrieved CSRF token: {csrf_token[:10]}... with {len(session_cookies)} session cookies"
-            )
+            logger.debug(f"CSRF token retrieved: {csrf_token[:10]}... ({len(session_cookies)} cookies)")
             return csrf_token, session_cookies
 
         except requests.exceptions.HTTPError as e:
@@ -903,29 +896,23 @@ class SAPApiClient:
             service_path = self.get_service_path()
             service_url = self.build_service_url(service_path)
 
-            logger.info(f"Getting CSRF token for {method} request to {url}")
+            logger.debug(f"Getting CSRF token for {method} request")
 
             # Try to get CSRF token from metadata endpoint first (recommended approach)
             metadata_url = f"{service_url}/$metadata"
             try:
-                logger.info(
-                    "Getting CSRF token from metadata endpoint (primary method)"
-                )
+                logger.debug("Trying CSRF token from metadata endpoint")
                 csrf_token, session_cookies = self._get_csrf_token(metadata_url)
-                logger.info("Successfully got CSRF token from metadata endpoint")
+                logger.debug("CSRF token retrieved from metadata")
             except (SAPAPIException, SAPAuthorizationException) as metadata_error:
-                logger.warning(
-                    f"Failed to get CSRF token from metadata endpoint: {metadata_error}"
-                )
+                logger.debug(f"Metadata CSRF failed: {metadata_error}")
                 # Fallback: try to get CSRF token from service root
-                logger.info("Trying to get CSRF token from service root as fallback")
+                logger.debug("Trying CSRF token from service root")
                 try:
                     csrf_token, session_cookies = self._get_csrf_token(service_url)
-                    logger.info("Successfully got CSRF token from service root")
+                    logger.debug("CSRF token retrieved from service root")
                 except Exception as service_error:
-                    logger.error(
-                        f"Failed to get CSRF token from service root: {service_error}"
-                    )
+                    logger.error(f"Service root CSRF failed: {service_error}")
 
                     # If the original error was authorization-related, re-raise it with context
                     if isinstance(metadata_error, SAPAuthorizationException):
@@ -966,7 +953,7 @@ class SAPApiClient:
             ):
                 params["$format"] = "json"
 
-            logger.info(f"Making {method} request to {url} with CSRF token")
+            logger.debug(f"Making {method} request with CSRF token")
 
             # Make the actual request with CSRF token and session cookies
             response = requests.request(
@@ -980,7 +967,7 @@ class SAPApiClient:
                 timeout=self.timeout,
             )
 
-            logger.info(f"CSRF-protected request response: {response.status_code}")
+            logger.debug(f"Request response: {response.status_code}")
 
             # Handle SAP-specific error patterns (same as _make_request)
             if response.status_code == 200:
@@ -1540,15 +1527,15 @@ class SAPApiClient:
 
         # Get total record count
         total_records = self.get_entity_count(service_path, entity_set, filter_query)
-        logger.info(f"Total records to be fetched: {total_records}")
+        logger.debug(f"Total records: {total_records}")
 
         if total_records == 0:
-            logger.info("No records found.")
+            logger.debug("No records found")
             return []
 
         # Fetch data with pagination
         while True:
-            logger.info(f"Fetching records for batch: {batch_id}")
+            logger.debug(f"Fetching batch {batch_id}")
 
             # For V2, we use $skip and $top for pagination if no next_link
             if self.odata_version == "v2" and next_link is None and total_fetched > 0:
@@ -1570,7 +1557,7 @@ class SAPApiClient:
                 )
 
             if not data or "value" not in data:
-                logger.info("No more data available or API issue.")
+                logger.debug("No more data available")
                 break
 
             records = data["value"]
@@ -1597,7 +1584,7 @@ class SAPApiClient:
             elif next_link is None:
                 break  # Exit loop if no more data
 
-        logger.info(f"Total records fetched: {total_fetched}")
+        logger.info(f"Fetched {total_fetched} records")
         return all_data
 
     def get_service_path(self, service_name: Optional[str] = None) -> str:
