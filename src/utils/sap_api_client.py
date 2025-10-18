@@ -282,7 +282,7 @@ class SAPApiClient:
             if "sap-client" not in params:
                 params["sap-client"] = self.client_id
             
-            logger.debug(f"Making {method} request to {url} (using connection pool)")
+            logger.info(f"Making {method} request to {url} (using connection pool)")
             
             # Make the request with httpx
             response = http_client.request(
@@ -298,7 +298,7 @@ class SAPApiClient:
             return self._convert_httpx_to_requests(response)
             
         except Exception as e:
-            logger.debug(f"Connection pool request failed, falling back to requests: {e}")
+            logger.error(f"Connection pool request failed, falling back to requests: {e}")
             # Fallback to regular requests
             return self._make_request_fallback(method, url, params, data, headers)
 
@@ -380,7 +380,7 @@ class SAPApiClient:
         try:
             return self._make_request_with_pool(method, url, params, data, headers)
         except Exception as e:
-            logger.debug(f"Pooled request failed, using fallback: {e}")
+            logger.info(f"Pooled request failed, using fallback: {e}")
             return self._make_request_fallback(method, url, params, data, headers)
 
     def _get_csrf_token(self, service_url: str) -> tuple[str, dict]:
@@ -731,7 +731,7 @@ class SAPApiClient:
         cache_key = f"metadata_{self.system_id}_{service_path}_{self.odata_version}"
         cached_metadata = metadata_cache.get(cache_key)
         if cached_metadata:
-            logger.debug(f"Using cached metadata for {service_path}")
+            logger.info(f"Using cached metadata for {service_path} (cache key: {cache_key})")
             return cached_metadata
 
         url = f"{self.build_service_url(service_path)}/$metadata"
@@ -741,7 +741,7 @@ class SAPApiClient:
 
         # Use direct requests call to avoid error detection logic that might misinterpret metadata XML
         try:
-            logger.debug(f"Making GET request to {url} for metadata")
+            logger.info(f"Fetching fresh metadata from {url}")
 
             response = requests.get(
                 url=url,
@@ -768,7 +768,7 @@ class SAPApiClient:
 
             # Cache the metadata for future requests
             metadata_cache.set(cache_key, response.text)
-            logger.debug(f"Cached metadata for {service_path}")
+            logger.info(f"Cached metadata for {service_path} (cache key: {cache_key})")
             
             return response.text
 

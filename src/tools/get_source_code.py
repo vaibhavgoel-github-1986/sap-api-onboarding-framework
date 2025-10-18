@@ -2,7 +2,7 @@
 SAP Source Code Tool - Get ABAP objects source code
 """
 
-from pydantic_models.sap_tech import SAPServiceConfig
+from ..pydantic_models.sap_tech import SAPServiceConfig
 from .base_sap_tool import BaseSAPTool
 
 

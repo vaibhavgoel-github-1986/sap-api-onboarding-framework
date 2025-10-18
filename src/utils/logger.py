@@ -110,7 +110,7 @@ class StructuredLogger:
         else:
             # Human-readable format for development
             formatter = logging.Formatter(
-                fmt='[%(levelname)s] %(asctime)s | %(name)s:%(funcName)s:%(lineno)d - %(message)s',
+                fmt='[%(levelname)s] %(asctime)s | Function: %(funcName)s - %(message)s',
                 datefmt='%Y-%m-%d %H:%M:%S'
             )
         

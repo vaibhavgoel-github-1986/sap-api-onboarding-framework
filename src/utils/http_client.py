@@ -87,13 +87,13 @@ class SimpleCache:
             'value': value,
             'expires': time.time() + ttl
         }
-        logger.debug(f"Cache set for key: {key} (TTL: {ttl}s)")
+        logger.info(f"Cache set for key: {key} (TTL: {ttl}s)")
     
     def clear(self) -> None:
         """Clear all cached values."""
         self._cache.clear()
-        logger.debug("Cache cleared")
+        logger.info("Cache cleared")
 
 
 # Global cache instance
-metadata_cache = SimpleCache(default_ttl=10)  # 10 secs for metadata
+metadata_cache = SimpleCache(default_ttl=2) # 2 seconds for testing

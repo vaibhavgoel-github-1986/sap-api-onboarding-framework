@@ -2,7 +2,7 @@
 SAP Table Schema Tool - Get table structure and field information
 """
 
-from pydantic_models.sap_tech import SAPServiceConfig
+from ..pydantic_models.sap_tech import SAPServiceConfig
 from .base_sap_tool import BaseSAPTool
 
 
