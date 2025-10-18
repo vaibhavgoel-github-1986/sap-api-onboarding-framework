@@ -2,15 +2,11 @@
 Common utilities and decorators for SAP services
 """
 import logging
-import os, sys
 from typing import Callable, TypeVar
 from functools import wraps
 from fastapi import HTTPException
 
-# Add project root to path
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-sys.path.insert(0, project_root)
-from src.utils.sap_api_client import (
+from .sap_api_client import (
     SAPAPIException, 
     SAPAuthenticationException, 
     SAPAuthorizationException, 

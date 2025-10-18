@@ -4,41 +4,15 @@ import requests
 from requests.auth import HTTPBasicAuth
 import xml.etree.ElementTree as ET
 from dotenv import load_dotenv
-
 import json
 from typing import Dict, List, Optional, Literal
-from src.utils.logger import logger
+
+from .logger import logger
+from .http_client import get_http_client_manager, metadata_cache
+from ..config import SAP_SYSTEMS
 
 # Load environment variables
 load_dotenv()
-
-SAP_SYSTEM_CONFIG = {
-    "QHA": {
-        "hostname": "https://saphec-qa.cisco.com:44300",
-        "client_id": "300",
-    },
-    "Q2A": {
-        "hostname": "https://saphec-qa2.cisco.com:44300",
-        "client_id": "300",
-    },
-    "RHA": {
-        "hostname": "https://saphec-preprod.cisco.com:44300",
-        "client_id": "300",
-    },
-    "D2A": {
-        "hostname": "https://saphec-dv2.cisco.com:44300",
-        "client_id": "120",
-    },
-    "DHA": {
-        "hostname": "https://saphec-dev.cisco.com:44300",
-        "client_id": "120",
-    },
-    "SHA": {
-        "hostname": "https://saphec-sb.cisco.com:44300",
-        "client_id": "320",
-    },
-}
-
 
 class SAPAPIException(Exception):
     """Custom exception for SAP API errors"""
@@ -85,10 +59,10 @@ class SAPApiClient:
     def __init__(
         self,
         system_id: str,
+        service_name: str,
         client_id: Optional[int] = None,
         username: Optional[str] = None,
-        password: Optional[str] = None,
-        service_name: Optional[str] = None,
+        password: Optional[str] = None,    
         service_namespace: Optional[str] = None,
         odata_version: Literal["v2", "v4"] = "v4",
         base_path: Optional[str] = None,
@@ -111,8 +85,8 @@ class SAPApiClient:
 
         # Use provided system config or default
         self.system_id = system_id.upper()
-        self.client_id = client_id or SAP_SYSTEM_CONFIG[self.system_id]["client_id"]
-        self.username = username or os.getenv("SAP_USER_ID") or os.getenv("SAP_USERNAME")
+        self.client_id = client_id or SAP_SYSTEMS[self.system_id]["client_id"]
+        self.username = username or os.getenv("SAP_USERNAME")
         self.password = password or os.getenv("SAP_PASSWORD")
         
         self.timeout = timeout
@@ -120,13 +94,13 @@ class SAPApiClient:
         self.service_name = service_name
         self.service_namespace = service_namespace 
 
-        if self.system_id not in SAP_SYSTEM_CONFIG:
+        if self.system_id not in SAP_SYSTEMS:
             raise ValueError(f"System ID '{self.system_id}' not found in configuration")
             
         if not self.username or not self.password:
             raise ValueError("Please provide SAP Credentials")
 
-        self.hostname = SAP_SYSTEM_CONFIG[self.system_id]["hostname"]
+        self.hostname = SAP_SYSTEMS[self.system_id]["hostname"]
 
         # Set base path according to OData version if not provided
         if base_path is None:
@@ -136,202 +110,15 @@ class SAPApiClient:
         else:
             self.base_path = base_path
 
+        # Initialize HTTP client manager for connection pooling
+        self.http_manager = get_http_client_manager()
+        
         logger.info(f"SAP API Client initialized: {self.hostname} ({odata_version}) Client: {self.client_id}")
         if service_name:
             logger.debug(f"Service: {service_name}")
             if odata_version == "v4":
                 service_path = self.get_service_path()
                 logger.debug(f"Service path: {service_path}")
-
-    def build_entity_key(self, **key_values) -> str:
-        """
-        Build entity key string from key-value pairs
-
-        Args:
-            **key_values: Key-value pairs for the entity key
-
-        Returns:
-            Formatted entity key string
-
-        Examples:
-            build_entity_key(id=123) -> "(123)"
-            build_entity_key(subscriptionrefid='SR100062', weborderid='96695165')
-                -> "(subscriptionrefid='SR100062',weborderid='96695165')"
-        """
-        if not key_values:
-            return ""
-
-        if len(key_values) == 1:
-            # Single key
-            key, value = next(iter(key_values.items()))
-            if isinstance(value, str):
-                return f"('{value}')"
-            else:
-                return f"({value})"
-        else:
-            # Composite key
-            key_parts = []
-            for key, value in key_values.items():
-                if isinstance(value, str):
-                    key_parts.append(f"{key}='{value}'")
-                else:
-                    key_parts.append(f"{key}={value}")
-            return f"({','.join(key_parts)})"
-
-    def build_advanced_filter(self, field_name: str, value: str) -> str:
-        """
-        Build OData filter expression with advanced operator support
-
-        Args:
-            field_name: The OData field name to filter on
-            value: The filter value (may contain operators, wildcards, or comma-separated values)
-
-        Returns:
-            str: OData filter expression
-
-        Examples:
-            build_advanced_filter("ConfigValue", "ne:NA") -> "ConfigValue ne 'NA'"
-            build_advanced_filter("ConfigValue", "ne: NA ") -> "ConfigValue ne 'NA'"
-            build_advanced_filter("ConfigValue", "eq:test") -> "ConfigValue eq 'test'"
-            build_advanced_filter("SubsRefID", "SR*") -> "startswith(SubsRefID, 'SR')"
-            build_advanced_filter("SubsRefID", "SR1155405") -> "SubsRefID eq 'SR1155405'"
-            build_advanced_filter("ConfigKey", "CIS_CC_USAGE_TYPE,CIS_CC_ASSET_TYPE") -> "(ConfigKey eq 'CIS_CC_USAGE_TYPE' or ConfigKey eq 'CIS_CC_ASSET_TYPE')"
-        """
-        # Trim the input value first
-        value = value.strip()
-
-        # Check for comma-separated values (multiple values)
-        if "," in value and ":" not in value:
-            # Split by comma and build OR conditions for multiple values
-            values = [v.strip() for v in value.split(",") if v.strip()]
-            if len(values) > 1:
-                or_conditions = []
-                for val in values:
-                    # Process each value individually (may contain wildcards)
-                    individual_filter = self.build_filter_with_wildcards(
-                        field_name, val
-                    )
-                    or_conditions.append(individual_filter)
-                return f"({' or '.join(or_conditions)})"
-            else:
-                # Single value after splitting, process normally
-                value = values[0] if values else value
-
-        # Check for operator syntax (operator:value)
-        if ":" in value and len(value.split(":", 1)) == 2:
-            operator, filter_value = value.split(":", 1)
-            operator = operator.lower().strip()  # Trim operator
-            filter_value = filter_value.strip()  # Trim filter value
-
-            if operator == "ne":
-                return f"{field_name} ne '{filter_value}'"
-            elif operator == "eq":
-                return f"{field_name} eq '{filter_value}'"
-            elif operator == "gt":
-                return f"{field_name} gt '{filter_value}'"
-            elif operator == "ge":
-                return f"{field_name} ge '{filter_value}'"
-            elif operator == "lt":
-                return f"{field_name} lt '{filter_value}'"
-            elif operator == "le":
-                return f"{field_name} le '{filter_value}'"
-            elif operator == "contains":
-                return f"contains({field_name}, '{filter_value}')"
-            elif operator == "startswith":
-                return f"startswith({field_name}, '{filter_value}')"
-            elif operator == "endswith":
-                return f"endswith({field_name}, '{filter_value}')"
-            else:
-                # Unknown operator, treat as exact match with original value
-                return f"{field_name} eq '{value}'"
-        else:
-            # Fall back to wildcard processing
-            return self.build_filter_with_wildcards(field_name, value)
-
-    def build_filter_with_wildcards(self, field_name: str, value: str) -> str:
-        """
-        Build OData filter expression with wildcard pattern support
-
-        Args:
-            field_name: The OData field name to filter on
-            value: The filter value (may contain wildcards *)
-
-        Returns:
-            str: OData filter expression
-
-        Examples:
-            build_filter_with_wildcards("SubsRefID", "SR*") -> "startswith(SubsRefID, 'SR')"
-            build_filter_with_wildcards("SubsRefID", "*1155405") -> "endswith(SubsRefID, '1155405')"
-            build_filter_with_wildcards("SubsRefID", "SR*405") -> "contains(SubsRefID, 'SR405')"
-            build_filter_with_wildcards("SubsRefID", "SR1155405") -> "SubsRefID eq 'SR1155405'"
-        """
-        if "*" in value:
-            if value.endswith("*"):
-                # Pattern like "SR*" or "LNP_TST*"
-                prefix = value[:-1]
-                return f"startswith({field_name}, '{prefix}')"
-            elif value.startswith("*"):
-                # Pattern like "*SR1155405"
-                suffix = value[1:]
-                return f"endswith({field_name}, '{suffix}')"
-            else:
-                # Pattern like "SR*405" - use contains for middle wildcards
-                pattern = value.replace("*", "")
-                return f"contains({field_name}, '{pattern}')"
-        else:
-            # Exact match
-            return f"{field_name} eq '{value}'"
-
-    def build_date_range_filter(
-        self,
-        field_name: str,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-    ) -> str:
-        """
-        Build OData filter expression for date range filtering
-
-        Args:
-            field_name: The OData datetime field name to filter on
-            start_date: Start date in ISO format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)
-            end_date: End date in ISO format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)
-
-        Returns:
-            str: OData filter expression for date range
-
-        Examples:
-            build_date_range_filter("CreatedAt", "2024-01-01", "2024-12-31")
-                -> "CreatedAt ge 2024-01-01T00:00:00Z and CreatedAt le 2024-12-31T23:59:59Z"
-            build_date_range_filter("ChangedAt", "2024-06-01")
-                -> "ChangedAt ge 2024-06-01T00:00:00Z"
-            build_date_range_filter("CreatedAt", end_date="2024-06-30")
-                -> "CreatedAt le 2024-06-30T23:59:59Z"
-        """
-        from datetime import datetime
-
-        filters = []
-
-        if start_date:
-            # If only date is provided (YYYY-MM-DD), add time to start of day
-            if len(start_date) == 10:  # YYYY-MM-DD format
-                start_datetime = f"{start_date}T00:00:00Z"
-            else:
-                # Assume full datetime is provided, ensure Z suffix for UTC
-                start_datetime = (
-                    start_date if start_date.endswith("Z") else f"{start_date}Z"
-                )
-            filters.append(f"{field_name} ge {start_datetime}")
-
-        if end_date:
-            # If only date is provided (YYYY-MM-DD), add time to end of day
-            if len(end_date) == 10:  # YYYY-MM-DD format
-                end_datetime = f"{end_date}T23:59:59Z"
-            else:
-                # Assume full datetime is provided, ensure Z suffix for UTC
-                end_datetime = end_date if end_date.endswith("Z") else f"{end_date}Z"
-            filters.append(f"{field_name} le {end_datetime}")
-
-        return " and ".join(filters)
 
     def _extract_error_message_v4(self, error_obj: dict) -> str:
         """
@@ -459,7 +246,7 @@ class SAPApiClient:
             raise ValueError("Username and password must be provided for authentication")
         return HTTPBasicAuth(self.username, self.password)
 
-    def _make_request(
+    def _make_request_with_pool(
         self,
         method: str,
         url: str,
@@ -467,7 +254,91 @@ class SAPApiClient:
         data: Optional[Dict] = None,
         headers: Optional[Dict] = None,
     ) -> requests.Response:
-        """Make HTTP request to SAP API with improved error handling"""
+        """Make HTTP request using connection pooled client (simple version)"""
+        try:
+            import base64
+            
+            # Get the sync HTTP client from manager
+            http_client = self.http_manager.get_sync_client()
+            
+            # Prepare headers with Basic Auth
+            request_headers = {
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            }
+            
+            if headers:
+                request_headers.update(headers)
+            
+            # Add Basic Auth header
+            if self.username and self.password:
+                auth_string = f"{self.username}:{self.password}"
+                encoded_auth = base64.b64encode(auth_string.encode()).decode()
+                request_headers["Authorization"] = f"Basic {encoded_auth}"
+            
+            # Prepare params
+            if params is None:
+                params = {}
+            if "sap-client" not in params:
+                params["sap-client"] = self.client_id
+            
+            logger.debug(f"Making {method} request to {url} (using connection pool)")
+            
+            # Make the request with httpx
+            response = http_client.request(
+                method=method,
+                url=url,
+                params=params,
+                json=data,
+                headers=request_headers,
+                timeout=self.timeout,
+            )
+            
+            # Convert httpx response to requests-like response
+            return self._convert_httpx_to_requests(response)
+            
+        except Exception as e:
+            logger.debug(f"Connection pool request failed, falling back to requests: {e}")
+            # Fallback to regular requests
+            return self._make_request_fallback(method, url, params, data, headers)
+
+    def _convert_httpx_to_requests(self, httpx_response):
+        """Convert httpx Response to requests.Response-like object for compatibility"""
+        import requests
+        from unittest.mock import Mock
+        
+        # Create a mock response that behaves like requests.Response
+        mock_response = Mock(spec=requests.Response)
+        mock_response.status_code = httpx_response.status_code
+        mock_response.headers = dict(httpx_response.headers)
+        mock_response.text = httpx_response.text
+        mock_response.content = httpx_response.content
+        mock_response.url = str(httpx_response.url)
+        
+        # Add json() method
+        def json_method():
+            import json
+            return json.loads(httpx_response.text)
+        mock_response.json = json_method
+        
+        # Add raise_for_status() method
+        def raise_for_status():
+            if httpx_response.status_code >= 400:
+                import requests
+                raise requests.exceptions.HTTPError(response=mock_response)
+        mock_response.raise_for_status = raise_for_status
+        
+        return mock_response
+
+    def _make_request_fallback(
+        self,
+        method: str,
+        url: str,
+        params: Optional[Dict] = None,
+        data: Optional[Dict] = None,
+        headers: Optional[Dict] = None,
+    ) -> requests.Response:
+        """Fallback method using standard requests library"""
         default_headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
@@ -483,273 +354,34 @@ class SAPApiClient:
         if "sap-client" not in params and "sap-client=" not in url:
             params["sap-client"] = self.client_id
 
-        # For V2, ensure $format=json is included if not already in URL
-        # Skip this for metadata URLs and for state-changing operations that might not allow SystemQueryOptions
-        if (
-            self.odata_version == "v2"
-            and "$format" not in params
-            and "$format=" not in url
-            and "/$metadata" not in url
-            and method.upper() not in ["POST", "PUT", "PATCH", "DELETE"]
-        ):
-            params["$format"] = "json"
+        logger.debug(f"Making {method} request to {url} (fallback)")
+        
+        return requests.request(
+            method=method,
+            url=url,
+            auth=self._get_auth(),
+            params=params,
+            json=data,
+            headers=default_headers,
+            timeout=self.timeout,
+        )
 
+    def _make_request(
+        self,
+        method: str,
+        url: str,
+        params: Optional[Dict] = None,
+        data: Optional[Dict] = None,
+        headers: Optional[Dict] = None,
+    ) -> requests.Response:
+        """Make HTTP request to SAP API with connection pooling and improved error handling"""
+        
+        # Try connection pooled request first, fallback to requests if needed
         try:
-            logger.debug(f"Making {method} request to {url}")
-            logger.debug(f"Params: {params}")
-
-            response = requests.request(
-                method=method,
-                url=url,
-                auth=self._get_auth(),
-                params=params,
-                json=data,
-                headers=default_headers,
-                timeout=self.timeout,
-            )
-
-            # Check for common SAP error patterns in successful responses
-            if response.status_code == 200:
-                content_type = response.headers.get("Content-Type", "")
-                if "application/json" in content_type:
-                    try:
-                        response_data = response.json()
-
-                        # Check for direct error object in response (v4 format)
-                        if response_data and "error" in response_data:
-                            error_obj = response_data["error"]
-                            error_msg = self._extract_error_message_v4(error_obj)
-
-                            logger.error(
-                                f"SAP API error in 200 response (v4 format): {error_msg}"
-                            )
-
-                            # Map error codes to appropriate exception types
-                            if any(
-                                pattern in error_msg.lower()
-                                for pattern in ["404", "not found", "not published"]
-                            ):
-                                raise SAPResourceNotFoundException(
-                                    f"SAP API error: {error_msg}"
-                                )
-                            elif any(
-                                pattern in error_msg.lower()
-                                for pattern in ["403", "forbidden", "access denied"]
-                            ):
-                                raise SAPAuthorizationException(
-                                    f"SAP API error: {error_msg}"
-                                )
-                            elif any(
-                                pattern in error_msg.lower()
-                                for pattern in ["401", "unauthorized"]
-                            ):
-                                raise SAPAuthenticationException(
-                                    f"SAP API error: {error_msg}"
-                                )
-                            else:
-                                raise SAPAPIException(f"SAP API error: {error_msg}")
-
-                        # Check for OData v2 specific error patterns in 'd' wrapper
-                        elif (
-                            response_data
-                            and "d" in response_data
-                            and isinstance(response_data["d"], dict)
-                        ):
-                            d_data = response_data["d"]
-                            if "error" in d_data:
-                                error_obj = d_data["error"]
-                                error_msg = self._extract_error_message_v2(error_obj)
-
-                                logger.error(
-                                    f"SAP API error in 200 response (v2 format): {error_msg}"
-                                )
-
-                                # Map error codes to appropriate exception types
-                                if any(
-                                    pattern in error_msg.lower()
-                                    for pattern in ["404", "not found", "not published"]
-                                ):
-                                    raise SAPResourceNotFoundException(
-                                        f"SAP API error: {error_msg}"
-                                    )
-                                elif any(
-                                    pattern in error_msg.lower()
-                                    for pattern in ["403", "forbidden", "access denied"]
-                                ):
-                                    raise SAPAuthorizationException(
-                                        f"SAP API error: {error_msg}"
-                                    )
-                                elif any(
-                                    pattern in error_msg.lower()
-                                    for pattern in ["401", "unauthorized"]
-                                ):
-                                    raise SAPAuthenticationException(
-                                        f"SAP API error: {error_msg}"
-                                    )
-                                else:
-                                    raise SAPAPIException(f"SAP API error: {error_msg}")
-
-                            # Check for empty results that might indicate an error
-                            elif "results" in d_data and len(d_data["results"]) == 0:
-                                # For count operations, 0 results might be legitimate
-                                if "/$count" not in url and "__count" not in d_data:
-                                    logger.warning(
-                                        f"Empty results returned from SAP API: {url}"
-                                    )
-
-                        # Check for OData v4 empty value array that might indicate service not found
-                        elif (
-                            "value" in response_data
-                            and len(response_data["value"]) == 0
-                        ):
-                            # For count operations, 0 results might be legitimate
-                            if "/$count" not in url:
-                                logger.warning(
-                                    f"Empty results returned from SAP API: {url}"
-                                )
-
-                    except json.JSONDecodeError:
-                        # If response is not JSON, check if it contains error text
-                        response_text = response.text.lower()
-                        if any(
-                            error_keyword in response_text
-                            for error_keyword in [
-                                "error",
-                                "exception",
-                                "not found",
-                                "service unavailable",
-                                "internal server error",
-                            ]
-                        ):
-                            logger.error(
-                                f"SAP API returned non-JSON error response: {response.text[:500]}"
-                            )
-                            raise SAPAPIException(
-                                f"SAP API error: {response.text[:500]}"
-                            )
-
-                # Check for XML error responses (sometimes SAP returns XML errors)
-                elif "application/xml" in content_type or "text/xml" in content_type:
-                    response_text = response.text.lower()
-                    if any(
-                        error_keyword in response_text
-                        for error_keyword in [
-                            "error",
-                            "exception",
-                            "not found",
-                            "service unavailable",
-                        ]
-                    ):
-                        logger.error(
-                            f"SAP API returned XML error response: {response.text[:500]}"
-                        )
-                        raise SAPAPIException(f"SAP API error: {response.text[:500]}")
-
-                # Check for HTML error pages (SAP sometimes returns HTML error pages)
-                elif "text/html" in content_type:
-                    response_text = response.text.lower()
-                    if any(
-                        error_keyword in response_text
-                        for error_keyword in [
-                            "error",
-                            "exception",
-                            "not found",
-                            "service unavailable",
-                            "internal server error",
-                        ]
-                    ):
-                        logger.error(
-                            f"SAP API returned HTML error page: {response.text[:500]}"
-                        )
-                        raise SAPAPIException(
-                            f"SAP API returned HTML error page - service may not be available"
-                        )
-
-            response.raise_for_status()
-            return response
-
-        except requests.exceptions.HTTPError as e:
-            status_code = e.response.status_code
-            error_detail = ""
-
-            # Try to extract detailed error messages for both OData v2 and v4
-            try:
-                if "application/json" in e.response.headers.get("Content-Type", ""):
-                    data = e.response.json()
-
-                    # Handle OData v4 format: direct error object
-                    if data and "error" in data:
-                        error_obj = data["error"]
-                        error_detail = self._extract_error_message_v4(error_obj)
-
-                    # Handle OData v2 format: error wrapped in 'd' object
-                    elif (
-                        data
-                        and "d" in data
-                        and isinstance(data["d"], dict)
-                        and "error" in data["d"]
-                    ):
-                        error_obj = data["d"]["error"]
-                        error_detail = self._extract_error_message_v2(error_obj)
-
-                    # Handle other v2 error patterns (sometimes error is at root level in v2)
-                    elif (
-                        self.odata_version == "v2"
-                        and data
-                        and any(
-                            key in data
-                            for key in ["error_description", "error", "message"]
-                        )
-                    ):
-                        error_detail = self._extract_error_message_v2(data)
-
-                    else:
-                        # Fallback: try to extract any meaningful error info
-                        error_detail = str(data)[:500]
-
-            except Exception as parse_error:
-                logger.debug(f"Failed to parse error response: {parse_error}")
-                # Fallback to raw response text
-                error_detail = e.response.text[:500] if e.response.text else ""
-
-            # Map common SAP error codes to specific exceptions
-            if status_code == 401:
-                error_msg = (
-                    f"Authentication failed: {error_detail or 'Invalid credentials'}"
-                )
-                logger.error(error_msg)
-                raise SAPAuthenticationException(error_msg, status_code, error_detail)
-            elif status_code == 403:
-                error_msg = f"Authorization failed: {error_detail or 'Insufficient permissions'}"
-                logger.error(error_msg)
-                raise SAPAuthorizationException(error_msg, status_code, error_detail)
-            elif status_code == 404:
-                error_msg = f"Resource not found: {error_detail or 'Invalid service path or entity set'}"
-                logger.error(error_msg)
-                raise SAPResourceNotFoundException(error_msg, status_code, error_detail)
-            elif status_code >= 500:
-                error_msg = (
-                    f"SAP server error: {error_detail or 'Internal server error'}"
-                )
-                logger.error(error_msg)
-                raise SAPServerException(error_msg, status_code, error_detail)
-            else:
-                error_msg = f"HTTP error {status_code}: {error_detail or str(e)}"
-                logger.error(error_msg)
-                raise SAPAPIException(error_msg, status_code, error_detail)
-
-        except requests.exceptions.ConnectionError as e:
-            error_msg = f"Connection error: {str(e)}"
-            logger.error(error_msg)
-            raise SAPAPIException(error_msg)
-        except requests.exceptions.Timeout as e:
-            error_msg = f"Request timed out after {self.timeout} seconds"
-            logger.error(error_msg)
-            raise SAPAPIException(error_msg)
-        except requests.exceptions.RequestException as e:
-            error_msg = f"Request error: {str(e)}"
-            logger.error(error_msg)
-            raise SAPAPIException(error_msg)
+            return self._make_request_with_pool(method, url, params, data, headers)
+        except Exception as e:
+            logger.debug(f"Pooled request failed, using fallback: {e}")
+            return self._make_request_fallback(method, url, params, data, headers)
 
     def _get_csrf_token(self, service_url: str) -> tuple[str, dict]:
         """
@@ -1075,81 +707,9 @@ class SAPApiClient:
         # Parameters will be added in get_data method
         return f"{self.hostname}{self.base_path}/{service_path}"
 
-    def get_metadata(self, service_path: Optional[str] = None) -> Dict[str, List[str]]:
-        """
-        Fetch metadata from an OData service (V2 or V4)
-
-        Args:
-            service_path: The specific OData service path or service name (optional if service_name was provided at initialization)
-
-        Returns:
-            Dictionary of entity types and their properties
-        """
-        # If no service_path is provided, try to use service_name
-        if not service_path and self.service_name:
-            service_path = self.get_service_path()
-        elif service_path and self.odata_version == "v4" and "/" not in service_path:
-            # If service_path looks like a service_name for V4, convert it
-            service_path = self.get_service_path(service_path)
-
-        if not service_path:
-            raise ValueError("No service path or service name provided")
-
-        url = f"{self.build_service_url(service_path)}/$metadata"
-
-        # Define parameters with sap-client explicitly included
-        params = {"sap-client": self.client_id}
-
-        try:
-            response = self._make_request(
-                "GET", url, params=params, headers={"Accept": "application/xml"}
-            )
-            root = ET.fromstring(response.text)
-
-            entities = {}
-
-            if self.odata_version == "v4":
-                # OData V4 namespace and structure
-                namespace = {"edm": "http://docs.oasis-open.org/odata/ns/edm"}
-                entity_types = root.findall(".//edm:EntityType", namespace)
-
-                for entity in entity_types:
-                    entity_name = entity.attrib.get("Name")
-                    if entity_name:
-                        properties = [
-                            prop.attrib["Name"]
-                            for prop in entity.findall("edm:Property", namespace)
-                        ]
-                        entities[entity_name] = properties
-            else:
-                # OData V2 namespace and structure
-                namespace = {
-                    "edmx": "http://schemas.microsoft.com/ado/2007/06/edmx",
-                    "edm": "http://schemas.microsoft.com/ado/2008/09/edm",
-                }
-
-                # In V2, entity types are inside Schema elements
-                schema_elements = root.findall(".//edm:Schema", namespace)
-                for schema in schema_elements:
-                    entity_types = schema.findall("edm:EntityType", namespace)
-                    for entity in entity_types:
-                        entity_name = entity.attrib.get("Name")
-                        if entity_name:
-                            properties = [
-                                prop.attrib["Name"]
-                                for prop in entity.findall("edm:Property", namespace)
-                            ]
-                            entities[entity_name] = properties
-
-            return entities
-
-        except Exception as e:
-            logger.error(f"Error fetching metadata: {e}")
-            return {}
-
     def get_raw_metadata(self, service_path: Optional[str] = None) -> str:
         """
-        Fetch raw metadata XML from an OData service (V2 or V4)
+        Fetch raw metadata XML from an OData service (V2 or V4) with caching
 
         Args:
             service_path: The specific OData service path or service name (optional if service_name was provided at initialization)
@@ -1166,6 +726,13 @@ class SAPApiClient:
 
         if not service_path:
             raise ValueError("No service path or service name provided")
+
+        # Check cache first (metadata doesn't change often)
+        cache_key = f"metadata_{self.system_id}_{service_path}_{self.odata_version}"
+        cached_metadata = metadata_cache.get(cache_key)
+        if cached_metadata:
+            logger.debug(f"Using cached metadata for {service_path}")
+            return cached_metadata
 
         url = f"{self.build_service_url(service_path)}/$metadata"
 
@@ -1199,6 +766,10 @@ class SAPApiClient:
                     f"Expected XML content for metadata, got: {content_type}"
                 )
 
+            # Cache the metadata for future requests
+            metadata_cache.set(cache_key, response.text)
+            logger.debug(f"Cached metadata for {service_path}")
+            
             return response.text
 
         except requests.exceptions.HTTPError as e:

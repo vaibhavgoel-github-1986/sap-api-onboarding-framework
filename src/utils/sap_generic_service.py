@@ -2,26 +2,18 @@
 Generic SAP API service for unified OData operations
 """
 
-import os, sys
 import time
-from typing import Literal, Optional
+from typing import Literal, Optional, Dict, Any, Tuple
 from fastapi import HTTPException
-from dotenv import load_dotenv
 
-# Add project root to path
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-sys.path.insert(0, project_root)
-from src.utils.sap_api_client import (
+from .sap_api_client import (
     SAPApiClient,
     SAPServerException,
     SAPAuthorizationException,
 )
-from src.utils.sap_common import handle_sap_exceptions
-from src.models.sap_tech import GenericAPIResponse
-from src.utils.logger import logger
-
-# Load environment variables
-load_dotenv()
+from .sap_common import handle_sap_exceptions
+from ..pydantic_models.sap_tech import GenericAPIResponse
+from .logger import logger
 
 class SAPGenericService:
     """Service class for generic SAP API operations"""
@@ -74,22 +66,16 @@ class SAPGenericService:
         """
         start_time = time.time()
 
-        # Validate HTTP method
-        valid_methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
-        http_method = http_method.upper()
-        if http_method not in valid_methods:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid HTTP method '{http_method}'. Supported: {', '.join(valid_methods)}",
-            )
+        if http_method is None:
+            raise HTTPException(status_code=400, detail="HTTP method is required")
 
-        if not system_id:
+        if system_id is None:
             raise HTTPException(status_code=400, detail="Please provide SAP system ID")
 
-        if not service_name:
+        if service_name is None:
             raise HTTPException(status_code=400, detail="Service name is required")
 
-        if not entity_name:
+        if entity_name is None:
             raise HTTPException(status_code=400, detail="Entity name is required")
 
         # Validate odata_version
@@ -99,8 +85,17 @@ class SAPGenericService:
             )
 
         # Use service_name as namespace if not provided
-        if not service_namespace:
-            service_namespace = service_name
+        if odata_version == "v4" and service_namespace is None:
+            raise HTTPException(status_code=400, detail="Service namespace is required")
+                            
+        # Validate HTTP method
+        http_method = http_method.upper()
+        valid_methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
+        if http_method not in valid_methods:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid HTTP method '{http_method}'. Supported: {', '.join(valid_methods)}",
+            )
 
         # Initialize SAP API client
         client = SAPApiClient(
@@ -109,7 +104,7 @@ class SAPGenericService:
             username=username,
             password=password,
             service_name=service_name,
-            service_namespace=service_namespace,
+            service_namespace=service_namespace or service_name,
             odata_version=odata_version
         )
 
@@ -320,9 +315,18 @@ class SAPGenericService:
 
         return user_friendly
 
-    def _parse_api_response(self, response, http_method, success, odata_version):
+    def _parse_api_response(
+        self, 
+        response: Any, 
+        http_method: str, 
+        success: bool, 
+        odata_version: str
+    ) -> Tuple[Optional[Dict[str, Any]], Optional[int], Optional[str]]:
         """
-        Parse API response and extract relevant data
+        Parse API response and extract relevant data.
+        
+        Returns:
+            Tuple of (raw_response, record_count, error_details)
         """
         raw_response = None
         record_count = None
@@ -397,9 +401,20 @@ class SAPGenericService:
 
         return raw_response, record_count, error_details
 
-    def _extract_data_array(self, raw_response, odata_version):
+    def _extract_data_array(
+        self, 
+        raw_response: Optional[Dict[str, Any]], 
+        odata_version: str
+    ) -> list[Any]:
         """
-        Extract data array from OData response (handles both V2 and V4 formats)
+        Extract data array from OData response (handles both V2 and V4 formats).
+        
+        Args:
+            raw_response: The parsed JSON response
+            odata_version: OData version (v2 or v4)
+            
+        Returns:
+            List of data items from the response
         """
         if not raw_response:
             return []
@@ -501,3 +516,5 @@ class SAPGenericService:
             error_details=error_message,
             message=f"Generic SAP API call failed: {error_message}",
         )
+
+sap_generic_service = SAPGenericService()

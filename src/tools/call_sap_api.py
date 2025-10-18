@@ -1,18 +1,10 @@
-import sys, os
 from typing import Literal, Optional 
-from dotenv import load_dotenv
 
-# Add project root to path
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-sys.path.insert(0, project_root)
-from src.utils.sap_common import handle_sap_exceptions
-from src.models.sap_tech import (
+from ..utils.sap_common import handle_sap_exceptions
+from ..pydantic_models.sap_tech import (
     GenericAPIResponse,
 )
-from src.utils.sap_generic_service import SAPGenericService
-
-# Load environment variables
-load_dotenv()
+from ..utils.sap_generic_service import sap_generic_service
 
 @handle_sap_exceptions(operation_name="Call SAP Generic API")
 def call_sap_api_generic(
@@ -31,7 +23,7 @@ def call_sap_api_generic(
     """
     Delegate to the generic service for unified API operations
     """
-    return SAPGenericService().call_sap_api_generic(
+    return sap_generic_service.call_sap_api_generic(
         http_method=http_method,
         service_name=service_name,
         entity_name=entity_name,

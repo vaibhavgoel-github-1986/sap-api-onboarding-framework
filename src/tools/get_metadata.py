@@ -1,26 +1,18 @@
-import sys, os
 from typing import Literal, Optional
-from dotenv import load_dotenv
 from fastapi import HTTPException
 
-# Add project root to path
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-sys.path.insert(0, project_root)
-from src.utils.sap_common import handle_sap_exceptions
-from src.models.sap_tech import (
+from ..utils.sap_common import handle_sap_exceptions
+from ..pydantic_models.sap_tech import (
     MetadataResponse,
 ) 
-from src.utils.sap_api_client import (
+from ..utils.sap_api_client import (
     SAPApiClient,
     SAPServerException,
 )
-from src.utils.logger import logger
-
-# Load environment variables
-load_dotenv()
+from ..utils.logger import logger
  
 @handle_sap_exceptions("fetching OData service metadata")
-def get_service_metadata(
+def get_metadata(
     service_name: str,
     system_id: str,
     service_namespace: Optional[str] = None,
@@ -34,7 +26,7 @@ def get_service_metadata(
 
     Args:
         service_name: SAP OData service name (required)
-        service_namespace: Service namespace (optional, defaults to service_name)
+        service_namespace: Service namespace (optional only in case of v2 oData, For v4 service namespace is required)
         odata_version: OData version - v2 or v4 (optional, defaults to v4)
         system_id: SAP system ID (optional, uses config default)
 

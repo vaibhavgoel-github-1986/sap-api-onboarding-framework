@@ -1,18 +1,10 @@
-import os
-import sys
-from dotenv import load_dotenv
 from langchain_openai import AzureChatOpenAI
 from typing import Optional
 from datetime import datetime, timedelta
 from pydantic import SecretStr
 
-# Add project root to path
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-sys.path.insert(0, project_root)
-from src.llm_model.get_auth_token import get_azure_token, clear_auth_token
-    
-# Load environment variables
-load_dotenv()
+from .get_auth_token import get_azure_token, clear_auth_token
+from ..config import get_settings
 
 # Global variables to track LLM instance and token expiration
 _cached_llm_instance = None
@@ -47,13 +39,15 @@ def get_azure_llm(
     """
 
     # Use config defaults if parameters not provided
-    azure_endpoint = azure_endpoint or os.getenv('AZURE_ENDPOINT')
-    api_version = api_version or os.getenv('AZURE_API_VERSION')
-    deployment_name = deployment_name or os.getenv('AZURE_DEPLOYMENT_NAME')
+    settings = get_settings()
+    
+    azure_endpoint = azure_endpoint or settings.azure_endpoint
+    api_version = api_version or settings.azure_api_version
+    deployment_name = deployment_name or settings.azure_deployment_name
     temperature = temperature or 0.2
 
-    app_key = app_key or os.getenv('AZURE_APP_KEY')
-    user_id = user_id or os.getenv('AZURE_USER_ID')
+    app_key = app_key or settings.azure_app_key
+    user_id = user_id or settings.azure_user_id
 
     # ✅ Validate required parameters
     if not all([deployment_name, azure_endpoint, api_version, app_key, user_id]):
