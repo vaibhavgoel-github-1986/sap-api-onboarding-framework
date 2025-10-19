@@ -1,11 +1,14 @@
 from typing import Literal, Optional 
 
+from langchain_core.tools import tool
+
 from ..utils.sap_common import handle_sap_exceptions
 from ..pydantic_models.sap_tech import (
     GenericAPIResponse,
 )
 from ..utils.sap_generic_service import sap_generic_service
 
+@tool
 @handle_sap_exceptions(operation_name="Call SAP Generic API")
 def call_sap_api_generic(
     http_method: str,

@@ -13,7 +13,7 @@ class GetSourceCodeTool(BaseSAPTool):
     """
 
     name: str = "get_source_code"
-    return_direct: bool = True
+    # return_direct: bool = True
     description: str = """
     Get detailed source code information for any SAP object like CLAS, PROG, FUNC, etc., including field names, data types, 
     lengths, descriptions, and constraints. 

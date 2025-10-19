@@ -13,7 +13,7 @@ class GetTableSchemaTool(BaseSAPTool):
     """
 
     name: str = "get_table_schema"
-    return_direct: bool = True
+    # return_direct: bool = True
     description: str = """
     Get detailed schema information for any SAP table including field names, data types, 
     lengths, descriptions, and constraints. 

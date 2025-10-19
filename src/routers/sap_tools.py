@@ -41,6 +41,7 @@ router = APIRouter()
     "Get CC Config Params for Item / Product ABC123 from SHA system"
     "Get a list of CC Config Details from D2A System"
     "Get a list of Material Characteristics from DHA System"
+    "Get Application SLG1 Logs for an Object INT100035838 from D2A System"
     ```
 
     ## Supported SAP Systems:
@@ -61,8 +62,7 @@ async def execute_sap_query(
     user_query: str = Query(
         ...,
         min_length=1,
-        max_length=1000,
-        description="Natural Language Query Tool for SAP Operations"
+        max_length=1000
     )
 ) -> QueryResponse:
     """

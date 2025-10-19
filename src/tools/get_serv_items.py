@@ -13,7 +13,7 @@ class GetServItemsTool(BaseSAPTool):
     """
 
     name: str = "get_serv_items"
-    return_direct: bool = True
+    #     return_direct: bool = True
     description: str = """
 
     Tool to provide comprehensive access to subscription orders, customer/custom information, 
@@ -95,16 +95,9 @@ class GetServItemsTool(BaseSAPTool):
     - `PriceAdj` (pricing adjustments)
     - `Appointments` (dates and scheduling)
 
-    ## Global Query Rules
+    ## Query Rules
     - Always filter out empty values: `ConfigValue ne ''`, `CharacValue ne ''`
-    - Use proper OData filters (`eq`, `startswith`, `contains`, etc.)
-    - SAP OData does NOT support `in` operator - so use `or` conditions instead
-    - Date/time must be ISO 8601 UTC format
-    - GUIDs must be valid format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-    - Case sensitivity: use annotations (`IsUpperCase`)
-    - Date format in SAP: YYYYMMDD (e.g. 20210329 for March 29, 2021)
-    - TimeStamp Format in SAP: YYYYMMDDHHMMSS (e.g. 20210329143000 for March 29, 2021 at 2:30 PM)
-
+    
     ## Few Examples for Query Parameters:
     ### Get items with appointment information
     ```python
@@ -139,6 +132,15 @@ class GetServItemsTool(BaseSAPTool):
                 "filter": "SubscriptionReferenceId eq 'SUB123456'",
                 "select": "SubscriptionReferenceId,WebOrderId,OrderedProductName,ActivationStatus",
                 "expand": "_ConfigParams($filter=(ConfigName eq 'CIS_CC_BILL_MODEL' or ConfigName eq 'CIS_CC_BILLIMMEDIATE' or ConfigName eq 'CIS_CC_BASE_START_DATE') and ConfigValue ne '' and ConfigValue ne 'NA')"
+        }
+    ```
+
+    ### Filter and Select Specific Fields from Child Entities
+    ```python
+            query_parameters={
+                "filter": "SubscriptionReferenceId eq 'SUB12345' and ItemLevel eq 'Minor'",
+                "select": "SubscriptionReferenceId,WebOrderId,OrderedProductName,ActivationStatus,ItemLevel",
+                "expand": "ConfigParams($select=ConfigName,ConfigValue;$filter=ConfigName eq 'CIS_CC_BILLIMMEDIATE' and ConfigValue ne '' and ConfigValue ne 'NA')"
         }
     ```
 

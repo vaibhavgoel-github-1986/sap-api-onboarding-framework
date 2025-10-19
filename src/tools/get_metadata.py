@@ -1,16 +1,19 @@
 from typing import Literal, Optional
 from fastapi import HTTPException
 
+from langchain_core.tools import tool
+
 from ..utils.sap_common import handle_sap_exceptions
 from ..pydantic_models.sap_tech import (
     MetadataResponse,
-) 
+)
 from ..utils.sap_api_client import (
     SAPApiClient,
     SAPServerException,
 )
 from ..utils.logger import logger
- 
+
+@tool
 @handle_sap_exceptions("fetching OData service metadata")
 def get_metadata(
     service_name: str,
@@ -58,64 +61,37 @@ def get_metadata(
         password=password,
         service_name=service_name,
         service_namespace=service_namespace,
-        odata_version=odata_version
+        odata_version=odata_version,
     )
 
     logger.info(
-        f"Initialized SAP client for system: {system_id}, service: {service_name} -> {service_namespace}, version: {odata_version}"
+        f"Retrieving metadata for service {service_name} from system {system_id}"
     )
 
     try:
         # Get the raw metadata XML using the client's get_raw_metadata method
         metadata_xml = client.get_raw_metadata()
 
-        logger.info(
-            f"Retrieved metadata XML for service {service_name}, size: {len(metadata_xml)} characters"
-        )
-
-        if not metadata_xml or len(metadata_xml) < 100:
+        if not metadata_xml:
+            logger.info(f"No metadata found for service {service_name} from system {system_id}")
+            
             return MetadataResponse(
                 service_name=service_name,
                 service_namespace=service_namespace,
                 odata_version=odata_version,
                 metadata_xml="",
-                entity_count=0,
-                message="No metadata found or metadata response is too small"
+                message="No metadata found",
             )
 
-        # Count entity types in the XML for summary info
-        import xml.etree.ElementTree as ET
-
-        try:
-            root = ET.fromstring(metadata_xml)
-            entity_count = 0
-
-            if odata_version == "v4":
-                namespace = {"edm": "http://docs.oasis-open.org/odata/ns/edm"}
-                entity_types = root.findall(".//edm:EntityType", namespace)
-                entity_count = len(entity_types)
-            else:
-                namespace = {
-                    "edmx": "http://schemas.microsoft.com/ado/2007/06/edmx",
-                    "edm": "http://schemas.microsoft.com/ado/2008/09/edm",
-                }
-                schema_elements = root.findall(".//edm:Schema", namespace)
-                for schema in schema_elements:
-                    entity_types = schema.findall("edm:EntityType", namespace)
-                    entity_count += len(entity_types)
-
-        except Exception as parse_error:
-            logger.warning(f"Could not parse XML for entity count: {parse_error}")
-            entity_count = 0
-
+        logger.info(f"Retrieved metadata XML for service {service_name} from system {system_id}")
+        
         return MetadataResponse(
             service_name=service_name,
             service_namespace=service_namespace,
             odata_version=odata_version,
             metadata_xml=metadata_xml,
-            entity_count=entity_count,
-            message=f"Successfully retrieved metadata for {service_name} with {entity_count} entities"
-        ) # pyright: ignore[reportCallIssue]
+            message="Metadata was successfully retrieved",
+        )  # pyright: ignore[reportCallIssue]
 
     except SAPServerException as e:
         logger.error(

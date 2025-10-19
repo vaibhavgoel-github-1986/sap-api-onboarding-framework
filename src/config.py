@@ -47,6 +47,9 @@ class Settings:
         # Security
         self.allowed_origins = ["http://localhost:3000"]
         
+        # Tool Output Control
+        self.tool_return_direct = bool(os.getenv("TOOL_RETURN_DIRECT", True))
+        
     def validate_required_settings(self) -> bool:
         """Validate that all required environment variables are set."""
         required_vars = [

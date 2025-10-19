@@ -73,7 +73,6 @@ class MetadataResponse(BaseModel):
     service_namespace: str = Field(..., description="Service namespace")
     odata_version: str = Field(..., description="OData version (v2 or v4)")
     metadata_xml: str = Field(..., description="Complete metadata XML content")
-    entity_count: int = Field(..., description="Number of entity types found")
     message: Optional[str] = Field(
         None, description="Optional message for user information"
     )

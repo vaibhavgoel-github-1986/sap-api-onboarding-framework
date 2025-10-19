@@ -6,6 +6,7 @@ import xml.etree.ElementTree as ET
 from dotenv import load_dotenv
 import json
 from typing import Dict, List, Optional, Literal
+from urllib.parse import urlparse
 
 from .logger import logger
 from .http_client import get_http_client_manager, metadata_cache
@@ -281,9 +282,9 @@ class SAPApiClient:
                 params = {}
             if "sap-client" not in params:
                 params["sap-client"] = self.client_id
-            
-            logger.info(f"Making {method} request to {url} (using connection pool)")
-            
+
+            logger.info(f"Making {method} request to {urlparse(url).path} (using connection pool)")
+
             # Make the request with httpx
             response = http_client.request(
                 method=method,
@@ -354,7 +355,7 @@ class SAPApiClient:
         if "sap-client" not in params and "sap-client=" not in url:
             params["sap-client"] = self.client_id
 
-        logger.debug(f"Making {method} request to {url} (fallback)")
+        logger.debug(f"Making {method} request to {urlparse(url).path} (fallback)")
         
         return requests.request(
             method=method,

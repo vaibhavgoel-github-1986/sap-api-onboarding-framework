@@ -14,7 +14,10 @@ from ..pydantic_models.sap_tech import (
 )
 from ..utils.logger import logger
 from ..utils.sap_generic_service import sap_generic_service
+from ..config import get_settings
 
+# Get Config Settings
+settings = get_settings()
 
 class BaseSAPTool(BaseTool):
     """
@@ -28,7 +31,7 @@ class BaseSAPTool(BaseTool):
 
     # Common configuration
     args_schema: ArgsSchema = GenericAPIRequest
-    # return_direct: bool = False
+    return_direct: bool = settings.tool_return_direct
 
     @abstractmethod
     def get_service_config(self, **kwargs) -> SAPServiceConfig:
