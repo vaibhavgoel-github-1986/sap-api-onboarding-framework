@@ -1,8 +1,6 @@
 import logging
 import sys
 import json
-import os
-import uuid
 from datetime import datetime
 from typing import Dict, Any, Optional
 from enum import Enum
@@ -79,7 +77,7 @@ class StructuredLogger:
         level: str = "INFO",
         service_name: str = "SAP-Tools-API",
         version: str = "1.0.0",
-        enable_json: Optional[bool] = True
+        enable_json: Optional[bool] = None
     ):
         self.name = name
         self.service_name = service_name
@@ -110,7 +108,7 @@ class StructuredLogger:
         else:
             # Human-readable format for development
             formatter = logging.Formatter(
-                fmt='[%(levelname)s] %(asctime)s | Function: %(funcName)s - %(message)s',
+                fmt='[%(levelname)s] %(asctime)s - %(message)s',
                 datefmt='%Y-%m-%d %H:%M:%S'
             )
         
@@ -172,7 +170,7 @@ class StructuredLogger:
 def setup_logger(
     name: str = "SAP-Tools-API", 
     level: str = "INFO",
-    enable_json: Optional[bool] = None
+    enable_json: Optional[bool] = False
 ) -> StructuredLogger:
     """
     Setup structured logger with enhanced capabilities.

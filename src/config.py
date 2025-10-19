@@ -41,6 +41,9 @@ class Settings:
         # Logging
         self.log_level = os.getenv("LOG_LEVEL", "INFO")
         
+        # Cache Configuration
+        self.metadata_cache_ttl = int(os.getenv("METADATA_CACHE_TTL", "28800"))  # After 8 hours cache will reset
+        
         # Security
         self.allowed_origins = ["http://localhost:3000"]
         

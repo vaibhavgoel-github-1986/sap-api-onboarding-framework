@@ -5,7 +5,7 @@ API routes for SAP technical tools.
 from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
 
-from ..agents.sap_tech_agent import create_sap_tech_agent
+from ..agents.sap_agent import create_sap_agent
 from ..pydantic_models.api_models import QueryResponse
 from ..utils.logger import (
     logger,
@@ -20,43 +20,49 @@ router = APIRouter()
 @router.get(
     "/tools",
     response_model=QueryResponse,
-    summary="AI Powered SAP Technical Assistant",
+    summary="SAP AI Agent",
     description="""\
-**Intelligent SAP Technical Assistant** that handles various SAP technical operations using natural language.
+    **Intelligent SAP AI Agent** that handles various SAP query operations using natural language.
 
-## Supported Operations:
-- 📊 **Table Schema Retrieval**: Get structure and field information for SAP tables
-- 💻 **Source Code Access**: Fetch ABAP objects source code  
-- 🔍 **API Metadata**: Retrieve OData service metadata and structure
+    ## Supported Operations:
+    - **API Metadata**: Retrieve OData service metadata and structure
+    - **Table Schema Retrieval**: Get structure and field information for SAP tables
+    - **Source Code Access**: Fetch ABAP objects source code
+    - **Service Items Retrieval**: Get subscription items, configuration items, CC config parameters, and material characteristics
 
-## Example Queries:
-```
-"Get table schema for MAKT from D2A system"
-"Show source code for ZCL_JIRA_ISSUES from D2A system"  
-"Get metadata for ZSD_PRODUCTS service, Namespace ZSB_PRODUCTS, System D2A"
-```
+    ## Example Queries:
+    ```
+    "Get table schema for MAKT from D2A system"
+    "Show source code for ZCL_JIRA_ISSUES from D2A system"  
+    "Get metadata for ZSD_PRODUCTS service, Namespace ZSB_PRODUCTS, System D2A"
+    "Get Subscription Items for Subscription ID 12345 from D2A system"
+    "Get Configuration Items for Service Order 67890 from Q2A system"
+    "Get Material Characteristics for Material E3-COLLAB from RHA system"
+    "Get CC Config Params for Item / Product ABC123 from SHA system"
+    "Get CC Config Details from D2A System"
+    "Get Material Characteristics from DHA System"
+    ```
 
-## Supported SAP Systems:
-- **D2A**: Development System  
-- **QHA/Q2A**: QA Systems
-- **RHA**: Pre-Production
-- **SHA**: Sandbox
+    ## Supported SAP Systems:
+    - **D2A**: Development System  
+    - **QHA/Q2A**: QA Systems
+    - **RHA**: Pre-Production
+    - **SHA**: Sandbox
 
-The agent automatically determines the appropriate SAP service to call based on your request.
-""",
+    The agent automatically determines the appropriate SAP service to call based on your request.
+    """,
     responses={
         200: {"description": "Successful response with SAP data"},
         400: {"description": "Invalid query or missing parameters"},
         500: {"description": "Internal server error or SAP system unavailable"},
     },
 )
-async def get_sap_tech_tools(
+async def execute_sap_query(
     user_query: str = Query(
         ...,
         min_length=1,
         max_length=1000,
-        description="NLP Query Tool for SAP Technical Operations",
-        example="Get table schema for MAKT from D2A system",
+        description="Natural Language Query Tool for SAP Operations"
     )
 ) -> QueryResponse:
     """
@@ -75,11 +81,11 @@ async def get_sap_tech_tools(
     # Input validation
     if not user_query or not user_query.strip():
         raise HTTPException(
-            status_code=400, detail="Query parameter cannot be empty or whitespace only"
+            status_code=400, detail="Please provide some input."
         )
 
     # Log the incoming request
-    log_api_request(method="GET", url="/sap_tech/tools", user_query=user_query.strip())
+    log_api_request(method="GET", url="/tools", user_query=user_query.strip())
 
     try:
         logger.info(
@@ -87,7 +93,7 @@ async def get_sap_tech_tools(
         )
 
         # Execute the agent with timeout consideration
-        agent = create_sap_tech_agent()
+        agent = create_sap_agent()
         if not agent:
             raise HTTPException(
                 status_code=500,

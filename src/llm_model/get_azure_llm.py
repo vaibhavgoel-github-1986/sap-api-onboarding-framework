@@ -1,6 +1,6 @@
 from langchain_openai import AzureChatOpenAI
 from typing import Optional
-from datetime import datetime, timedelta
+from datetime import datetime
 from pydantic import SecretStr
 
 from .get_auth_token import get_azure_token, clear_auth_token

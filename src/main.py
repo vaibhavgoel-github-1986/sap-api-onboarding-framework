@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .routers.health import router as health_router
-from .routers.sap_tech_tools import router as sap_tech_tools
+from .routers.sap_tools import router as sap_tools
 from .utils.logger import logger
 from .config import get_settings
 
@@ -44,7 +44,7 @@ def create_app() -> FastAPI:
 
     # Include routers
     app.include_router(health_router, tags=["Health Check"])
-    app.include_router(sap_tech_tools, prefix="/sap_tech", tags=["SAP Technical Tools"])
+    app.include_router(sap_tools, prefix="/sap", tags=["SAP Technical Tools"])
 
     return app
 

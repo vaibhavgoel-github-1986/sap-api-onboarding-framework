@@ -6,6 +6,7 @@ import asyncio
 from typing import Optional, Dict, Any
 from functools import lru_cache
 from .logger import logger
+from ..config import get_settings
 
 
 class HTTPClientManager:
@@ -96,4 +97,5 @@ class SimpleCache:
 
 
 # Global cache instance
-metadata_cache = SimpleCache(default_ttl=2) # 2 seconds for testing
+settings = get_settings()
+metadata_cache = SimpleCache(default_ttl=settings.metadata_cache_ttl)

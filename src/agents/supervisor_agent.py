@@ -6,7 +6,7 @@ from typing import Literal, Any, Generator, Dict, Iterator
 
 from ..llm_model.get_azure_llm import get_azure_llm
 from ..tools.call_sap_api import call_sap_api_generic
-from ..tools.get_metadata import get_service_metadata
+from ..tools.get_metadata import get_metadata
 from ..prompts.som_agent_prompt import SOM_AGENT_PROMPT
 from ..prompts.tech_agent_prompt import TECH_AGENT_PROMPT
 from ..prompts.supervisor_agent_prompt import SUPERVISOR_AGENT_PROMPT

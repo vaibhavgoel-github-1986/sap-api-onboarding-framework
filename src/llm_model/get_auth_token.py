@@ -1,18 +1,14 @@
 import time
 import requests
 import base64
-import os
 import traceback
-from typing import Optional, Dict
-from dotenv import load_dotenv
-import logging
+from typing import Optional
 
-# Load environment variables
-load_dotenv()
+from ..utils.logger import logger
+from ..config import get_settings
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Config Settings
+settings = get_settings()
 
 # ✅ Global variables for token caching
 _cached_azure_token = None
@@ -29,9 +25,9 @@ def get_azure_token() -> Optional[str]:
         return _cached_azure_token
 
     # Get Azure credentials from config
-    client_id = os.getenv('AZURE_CLIENT_ID')
-    client_secret = os.getenv('AZURE_CLIENT_SECRET')
-    token_url = os.getenv('AZURE_TOKEN_URL')
+    client_id = settings.azure_client_id
+    client_secret = settings.azure_client_secret
+    token_url = settings.azure_token_url
 
     if not all([client_id, client_secret, token_url]):
         logger.error("Missing Azure credentials: AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TOKEN_URL")
