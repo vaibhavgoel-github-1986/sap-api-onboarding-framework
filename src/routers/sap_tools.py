@@ -39,8 +39,8 @@ router = APIRouter()
     "Get Configuration Items for Service Order 67890 from Q2A system"
     "Get Material Characteristics for Material E3-COLLAB from RHA system"
     "Get CC Config Params for Item / Product ABC123 from SHA system"
-    "Get CC Config Details from D2A System"
-    "Get Material Characteristics from DHA System"
+    "Get a list of CC Config Details from D2A System"
+    "Get a list of Material Characteristics from DHA System"
     ```
 
     ## Supported SAP Systems:

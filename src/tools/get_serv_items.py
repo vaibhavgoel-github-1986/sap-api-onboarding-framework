@@ -31,10 +31,21 @@ class GetServItemsTool(BaseSAPTool):
     Use this SAP API details:
     - service_name="ZSD_SERVICE_API",
     - service_namespace="ZSB_SERVICE_API",
-    - entity_name="ServiceModel", 
+    - entity_name=[Depends on the user query], 
     - odata_version="v4",
     - http_method="GET"
     
+    Entities Available:
+        - `ServiceItems`: Main subscription item details
+        - `ConfigParams`: Configuration parameters for CC
+        - `MaterialCharac`: Material characteristics for products
+        - `HeadCust`: Header-level customer/custom data
+        - `ItemCust`: Item-level customer/custom data
+        - `PriceAdj`: Pricing adjustments and credits
+        - `Appointments`: Service and contract appointment dates
+        - `CCParams`: List of available CC configuration parameters
+        - `MaterialParams`: List of available material characteristic names
+                
     ## Query Strategy Guidelines
 
     ### Default Behavior for General Subscription Queries

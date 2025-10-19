@@ -110,9 +110,9 @@ class BaseSAPTool(BaseTool):
 
             http_method = params.get("http_method")
 
-            if http_method == "GET" and not params.get("query_parameters"):
-                raise ToolException("Please provide query_parameters for a GET request")
-            elif http_method in ["POST", "PUT", "PATCH"] and not params.get(
+            # if http_method == "GET" and not params.get("query_parameters"):
+            #     raise ToolException("Please provide query_parameters for a GET request")
+            if http_method in ["POST", "PUT", "PATCH"] and not params.get(
                 "request_body"
             ):
                 raise ToolException(
@@ -120,7 +120,7 @@ class BaseSAPTool(BaseTool):
                 )
 
             # For Logging
-            if http_method == "GET":
+            if http_method == "GET" and params.get("query_parameters"):
                 logger.info(
                     f"Making a GET request with query parameters: {params.get('query_parameters')}"
                 )

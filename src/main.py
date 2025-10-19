@@ -44,7 +44,7 @@ def create_app() -> FastAPI:
 
     # Include routers
     app.include_router(health_router, tags=["Health Check"])
-    app.include_router(sap_tools, prefix="/sap", tags=["SAP Technical Tools"])
+    app.include_router(sap_tools, tags=["SAP Tools"])
 
     return app
 
