@@ -3,7 +3,7 @@ Generic SAP API service for unified OData operations
 """
 
 import time
-from typing import Literal, Optional, Dict, Any, Tuple
+from typing import Literal, Optional, Dict, Any, Tuple, Callable, List, cast
 from fastapi import HTTPException
 
 from .sap_api_client import (
@@ -19,8 +19,60 @@ class SAPGenericService:
     """Service class for generic SAP API operations"""
 
     def __init__(self):
-        """Initialize the SAP generic service"""
-        pass
+        """Initialize the SAP generic service."""
+        self._pre_request_hooks: List[Callable[[Dict[str, Any]], Optional[Dict[str, Any]]]] = []
+        self._post_response_hooks: List[
+            Callable[[GenericAPIResponse, Dict[str, Any]], Optional[GenericAPIResponse]]
+        ] = []
+
+    def register_pre_request_hook(
+        self, hook: Callable[[Dict[str, Any]], Optional[Dict[str, Any]]]
+    ) -> None:
+        """Register a hook that can mutate request context before execution."""
+        self._pre_request_hooks.append(hook)
+
+    def register_post_response_hook(
+        self,
+        hook: Callable[[GenericAPIResponse, Dict[str, Any]], Optional[GenericAPIResponse]],
+    ) -> None:
+        """Register a hook that can post-process API responses."""
+        self._post_response_hooks.append(hook)
+
+    def _apply_pre_hooks(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        updated_context = dict(context)
+        for hook in self._pre_request_hooks:
+            try:
+                hook_result = hook(updated_context)
+                if isinstance(hook_result, dict):
+                    updated_context.update(hook_result)
+            except Exception as hook_error:  # pragma: no cover - defensive
+                hook_name = getattr(hook, "__name__", repr(hook))
+                logger.warning(
+                    f"Pre-request hook {hook_name} raised an exception",
+                    hook_name=hook_name,
+                    hook_error=str(hook_error),
+                    event_type="sap_pre_request_hook_error",
+                )
+        return updated_context
+
+    def _apply_post_hooks(
+        self, response: GenericAPIResponse, context: Dict[str, Any]
+    ) -> GenericAPIResponse:
+        current_response = response
+        for hook in self._post_response_hooks:
+            try:
+                hook_result = hook(current_response, context)
+                if isinstance(hook_result, GenericAPIResponse):
+                    current_response = hook_result
+            except Exception as hook_error:  # pragma: no cover - defensive
+                hook_name = getattr(hook, "__name__", repr(hook))
+                logger.warning(
+                    f"Post-response hook {hook_name} raised an exception",
+                    hook_name=hook_name,
+                    hook_error=str(hook_error),
+                    event_type="sap_post_response_hook_error",
+                )
+        return current_response
 
     @handle_sap_exceptions("making generic SAP API call")
     def call_sap_api_generic(
@@ -66,36 +118,84 @@ class SAPGenericService:
         """
         start_time = time.time()
 
-        if http_method is None:
+        # Allow registered hooks to enrich or override the request context.
+        request_context = self._apply_pre_hooks(
+            {
+                "http_method": http_method,
+                "service_name": service_name,
+                "entity_name": entity_name,
+                "service_namespace": service_namespace,
+                "odata_version": odata_version,
+                "query_parameters": query_parameters,
+                "request_body": request_body,
+                "system_id": system_id,
+                "client_id": client_id,
+                "username": username,
+                "password": password,
+            }
+        )
+
+        http_method_value = request_context.get("http_method")
+        service_name_value = request_context.get("service_name")
+        entity_name_value = request_context.get("entity_name")
+        service_namespace_value = request_context.get("service_namespace")
+        odata_version_value = request_context.get("odata_version", "v4")
+        query_parameters = request_context.get("query_parameters")
+        request_body = request_context.get("request_body")
+        system_id = request_context.get("system_id")
+        client_id = request_context.get("client_id")
+        username = request_context.get("username")
+        password = request_context.get("password")
+
+        if http_method_value is None:
             raise HTTPException(status_code=400, detail="HTTP method is required")
 
         if system_id is None:
             raise HTTPException(status_code=400, detail="Please provide SAP system ID")
 
-        if service_name is None:
+        if service_name_value is None:
             raise HTTPException(status_code=400, detail="Service name is required")
 
-        if entity_name is None:
+        if entity_name_value is None:
             raise HTTPException(status_code=400, detail="Entity name is required")
 
         # Validate odata_version
-        if odata_version not in ["v2", "v4"]:
+        if odata_version_value not in ["v2", "v4"]:
             raise HTTPException(
                 status_code=400, detail="OData version must be 'v2' or 'v4'"
             )
 
         # Use service_name as namespace if not provided
-        if odata_version == "v4" and service_namespace is None:
+        if odata_version_value == "v4" and service_namespace_value is None:
             raise HTTPException(status_code=400, detail="Service namespace is required")
-                            
-        # Validate HTTP method
-        http_method = http_method.upper()
+
+        # Validate HTTP method after hooks run
+        http_method = str(http_method_value).upper()
         valid_methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
         if http_method not in valid_methods:
             raise HTTPException(
                 status_code=400,
                 detail=f"Invalid HTTP method '{http_method}'. Supported: {', '.join(valid_methods)}",
             )
+
+        service_name = str(service_name_value)
+        entity_name = str(entity_name_value)
+        service_namespace = (
+            str(service_namespace_value) if service_namespace_value is not None else None
+        )
+        odata_version = cast(Literal["v2", "v4"], odata_version_value)
+
+        request_context.update(
+            {
+                "http_method": http_method,
+                "service_name": service_name,
+                "entity_name": entity_name,
+                "service_namespace": service_namespace,
+                "odata_version": odata_version,
+                "system_id": system_id,
+                "client_id": client_id,
+            }
+        )
 
         # Initialize SAP API client
         client = SAPApiClient(
@@ -116,6 +216,7 @@ class SAPGenericService:
         # Clean up entity name - remove leading slash if present
         entity_name = entity_name.lstrip("/")
         full_url = f"{base_url}/{entity_name}"
+        request_context["request_url"] = full_url
 
         # Prepare query parameters
         if query_parameters is None:
@@ -161,6 +262,9 @@ class SAPGenericService:
         else:
             query_parameters = transformed_params
 
+        request_context["query_parameters"] = query_parameters
+        request_context["request_body"] = request_body
+
         # Log the request details
         if query_parameters:
             logger.info(f"Query params: {query_parameters}")
@@ -179,6 +283,8 @@ class SAPGenericService:
 
             execution_time_ms = int((time.time() - start_time) * 1000)
             logger.info(f"SAP API response status: {response.status_code} in {execution_time_ms} ms")
+            request_context["execution_time_ms"] = execution_time_ms
+            request_context["status_code"] = response.status_code
 
             # Capture the actual query parameters that were sent (including SAP client additions)
             final_query_params = query_parameters.copy()
@@ -195,6 +301,7 @@ class SAPGenericService:
 
             # Convert all values to strings for the response model
             final_query_params_str = {k: str(v) for k, v in final_query_params.items()}
+            request_context["final_query_parameters"] = final_query_params_str
 
             # Parse response and extract data based on success
             success = 200 <= response.status_code < 300
@@ -218,8 +325,11 @@ class SAPGenericService:
             user_friendly_params = self._create_user_friendly_params(
                 final_query_params_str
             )
+            request_context["success"] = success
+            request_context["record_count"] = record_count
+            request_context["error_details"] = error_details
 
-            return GenericAPIResponse(
+            response_model = GenericAPIResponse(
                 http_method=http_method,
                 service_name=service_name,
                 service_namespace=service_namespace,
@@ -238,10 +348,18 @@ class SAPGenericService:
                 message=message,
             )
 
+            response_model = self._apply_post_hooks(response_model, request_context)
+            return response_model
+
         except SAPServerException as e:
             execution_time_ms = int((time.time() - start_time) * 1000)
             logger.error(f"SAP server error: {e}")
-            return self._build_error_response(
+            request_context["execution_time_ms"] = execution_time_ms
+            request_context["status_code"] = 500
+            request_context["success"] = False
+            request_context["error_details"] = str(e)
+
+            error_response = self._build_error_response(
                 http_method,
                 service_name,
                 service_namespace,
@@ -254,10 +372,17 @@ class SAPGenericService:
                 500,
                 str(e),
             )
+            return self._apply_post_hooks(error_response, request_context)
+
         except SAPAuthorizationException as e:
             execution_time_ms = int((time.time() - start_time) * 1000)
             logger.error(f"SAP authorization error: {e}")
-            return self._build_error_response(
+            request_context["execution_time_ms"] = execution_time_ms
+            request_context["status_code"] = 403
+            request_context["success"] = False
+            request_context["error_details"] = str(e)
+
+            error_response = self._build_error_response(
                 http_method,
                 service_name,
                 service_namespace,
@@ -270,10 +395,17 @@ class SAPGenericService:
                 403,
                 str(e),
             )
+            return self._apply_post_hooks(error_response, request_context)
+
         except Exception as e:
             execution_time_ms = int((time.time() - start_time) * 1000)
             logger.error(f"SAP API call failed: {str(e)}")
-            return self._build_error_response(
+            request_context["execution_time_ms"] = execution_time_ms
+            request_context["status_code"] = 500
+            request_context["success"] = False
+            request_context["error_details"] = str(e)
+
+            error_response = self._build_error_response(
                 http_method,
                 service_name,
                 service_namespace,
@@ -286,6 +418,7 @@ class SAPGenericService:
                 500,
                 str(e),
             )
+            return self._apply_post_hooks(error_response, request_context)
 
     def _create_user_friendly_params(self, query_params_dict):
         """

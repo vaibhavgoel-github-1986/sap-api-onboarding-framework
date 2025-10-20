@@ -3,9 +3,10 @@ Base SAP Tool - Generic reusable pattern for all SAP API tools
 """
 
 from abc import abstractmethod
-from typing import Dict, Any
+from typing import Dict, Any, Type
+
 from langchain_core.tools import ToolException, BaseTool
-from langchain_core.tools.base import ArgsSchema
+from pydantic import BaseModel
 
 from ..pydantic_models.sap_tech import (
     GenericAPIResponse,
@@ -30,7 +31,7 @@ class BaseSAPTool(BaseTool):
     """
 
     # Common configuration
-    args_schema: ArgsSchema = GenericAPIRequest
+    args_schema: Type[BaseModel] = GenericAPIRequest
     return_direct: bool = settings.tool_return_direct
 
     @abstractmethod

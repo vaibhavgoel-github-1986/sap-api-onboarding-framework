@@ -1,0 +1,98 @@
+[tools.get_table_schema]
+description = """
+Get detailed schema information for SAP tables or CDS views.
+Ideal for discovering field names, data types, key flags, and descriptions before building queries.
+"""
+return_direct = true
+
+[tools.get_table_schema.service_config]
+service_name = "ZSD_TABLE_SCHEMA"
+service_namespace = "ZSB_TABLE_SCHEMA"
+entity_name = "TableSchema"
+odata_version = "v4"
+http_method = "GET"
+
+[tools.get_table_schema.defaults.query_parameters]
+select = "tableName,fieldName,datatype,leng,description"
+
+[tools.get_table_schema.prompt_hints]
+items = [
+  "Service is preconfigured as ZSD_TABLE_SCHEMA (namespace ZSB_TABLE_SCHEMA); use it without asking the user for service details.",
+  "If metadata is needed, call get_metadata with the registry defaults before invoking this tool.",
+  "Combine filter and select to keep payloads small for large tables."
+]
+
+[tools.get_source_code]
+description = """
+Retrieve ABAP source code artifacts such as classes, programs, and function modules. 
+Useful for code review, troubleshooting, or documenting enhancements. Defaults assume read-only access patterns.
+"""
+return_direct = true
+
+[tools.get_source_code.service_config]
+service_name = "ZSD_SOURCE_CODE"
+service_namespace = "ZSB_SOURCE_CODE"
+entity_name = "SourceCode"
+odata_version = "v4"
+http_method = "GET"
+
+[tools.get_source_code.defaults.query_parameters]
+select = "obj_name,obj_type,source_code,created_by,changed_on"
+top = "50"
+
+[tools.get_source_code.prompt_hints]
+items = [
+  "When object type is unknown, inspect prefixes like ZCL_, ZIF_, or ZFM_.",
+  "Always filter by obj_name to avoid large payloads.",
+  "Support wildcards by combining startswith in $filter expressions."
+]
+
+[tools.get_serv_items]
+description = """
+Access SAP BRIM subscription data including configuration parameters, material characteristics, 
+appointments, and pricing adjustments. Defaults favor the ServiceItems entity but can be overridden for specialist views.
+"""
+return_direct = true
+
+[tools.get_serv_items.service_config]
+service_name = "ZSD_SERVICE_API"
+service_namespace = "ZSB_SERVICE_API"
+entity_name = "ServiceItems"
+odata_version = "v4"
+http_method = "GET"
+
+[tools.get_serv_items.defaults.query_parameters]
+select = "SubscriptionReferenceId,WebOrderId,OrderedProductName,ActivationStatus,ContractTimeSliceStatus"
+filter = "ObjectType eq 'BUS2000266'"
+top = "50"
+
+[tools.get_serv_items.prompt_hints]
+items = [
+  "Expand ConfigParams only when a user explicitly asks for configuration values.",
+  "Use ItemLevel to differentiate between bundle, major, and minor items.",
+  "Fetch CCParams or MaterialParams first when mapping natural language to technical names."
+]
+
+[tools.get_slg1_logs]
+description = """
+Read SLG1 application logs to troubleshoot background jobs or transactional issues. Defaults constrain the time window and object identifiers to keep queries lean.
+"""
+return_direct = true
+
+[tools.get_slg1_logs.service_config]
+service_name = "ZSD_APPL_LOG_READ"
+service_namespace = "ZSB_APPL_LOG_READ"
+entity_name = "LogMessages"
+odata_version = "v4"
+http_method = "GET"
+
+[tools.get_slg1_logs.defaults.query_parameters]
+select = "external_number,logged_on,message_text,log_level,user_name"
+top = "100"
+
+[tools.get_slg1_logs.prompt_hints]
+items = [
+  "Filter by external_number to zero-in on a specific subscription/object.",
+  "Date filters use ISO 8601 timestamps (e.g., 2025-01-15T00:00:00Z).",
+  "Combine log_level checks with message_text contains for symptom hunting."
+]

@@ -4,6 +4,6 @@ langgraph==0.6.10
 langgraph-checkpoint-postgres==2.0.25
 requests==2.32.5
 fastapi==0.119.0
-uvicorn==0.37.0
+uvicorn==0.38.0
 httpx==0.28.1
 langgraph-supervisor==0.0.29

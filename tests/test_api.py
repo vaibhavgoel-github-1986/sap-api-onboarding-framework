@@ -18,20 +18,20 @@ class TestSAPToolsAPI:
     """Test suite for SAP Tools API."""
     
     @pytest.fixture
-    def client(self):
+    def client(self) -> TestClient:
         """Create test client."""
         app = create_app()
         return TestClient(app)
     
-    def test_health_check(self, client):
+    def test_health_check(self, client: TestClient):
         """Test health check endpoint."""
         response = client.get("/")
         assert response.status_code == 200
         assert response.json()["status"] == "healthy"
     
-    def test_sap_tools_valid_query(self, client):
+    def test_sap_tools_valid_query(self, client: TestClient):
         """Test SAP tools endpoint with valid query."""
-        with patch('src.agents.sap_tech_agent.create_sap_tech_agent') as mock_agent:
+        with patch('src.routers.sap_tools.create_sap_agent') as mock_agent:
             # Mock agent response
             mock_instance = MagicMock()
             mock_instance.invoke.return_value = {
@@ -39,26 +39,26 @@ class TestSAPToolsAPI:
             }
             mock_agent.return_value = mock_instance
             
-            response = client.get("/sap_tech/tools?user_query=Get schema for MAKT table")
+            response = client.get("/tools?user_query=Get schema for MAKT table")
             
             assert response.status_code == 200
             data = response.json()
             assert data["success"] is True
             assert "MAKT" in data["response"]
     
-    def test_sap_tools_empty_query(self, client):
+    def test_sap_tools_empty_query(self, client: TestClient):
         """Test SAP tools endpoint with empty query."""
-        response = client.get("/sap_tech/tools?user_query=")
+        response = client.get("/tools?user_query=")
         assert response.status_code == 422  # Validation error
     
-    def test_sap_tools_agent_error(self, client):
+    def test_sap_tools_agent_error(self, client: TestClient):
         """Test SAP tools endpoint when agent throws error."""
-        with patch('src.routers.sap_tech_tools.create_sap_tech_agent') as mock_agent:
+        with patch('src.routers.sap_tools.create_sap_agent') as mock_agent:
             mock_instance = MagicMock()
             mock_instance.invoke.side_effect = Exception("SAP connection failed")
             mock_agent.return_value = mock_instance
             
-            response = client.get("/sap_tech/tools?user_query=Get schema for MAKT table")
+            response = client.get("/tools?user_query=Get schema for MAKT table")
             
             # Should return 500 for internal server errors now
             assert response.status_code == 500

@@ -1,7 +1,0 @@
-{
-    "dependencies": ["."], 
-    "graphs": {
-        "test_agent": "./src/agents/supervisor_agent.py:test_agent"    
-    },
-    "env": "./.env"
-}
