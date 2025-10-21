@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  # Main API Server
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sap-tools-api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      # Mount data directory for persistence
+      - ./data:/app/data
+      # Optional: Mount for development (comment out in production)
+      # - ./src:/app/src
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - sap-tools-network
+
+  # Streamlit UI - Simple Chatbot Interface
+  ui:
+    build:
+      context: .
+      dockerfile: Dockerfile.streamlit
+    container_name: sap-tools-ui
+    ports:
+      - "8501:8501"
+    environment:
+      - API_BASE_URL=http://api:8000
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - sap-tools-network
+
+  # Admin UI - Tool Registry Management (5-tab interface)
+  admin-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile.admin
+    container_name: sap-tools-admin-ui
+    ports:
+      - "8502:8502"
+    environment:
+      - API_BASE_URL=http://api:8000
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - sap-tools-network
+
+networks:
+  sap-tools-network:
+    driver: bridge
+
+volumes:
+  data:
+    driver: local

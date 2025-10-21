@@ -1,0 +1,21 @@
+# Core Framework
+fastapi==0.119.0
+uvicorn[standard]==0.38.0
+python-dotenv==1.1.1
+
+# HTTP Client & Requests
+httpx==0.28.1
+requests==2.32.5
+
+# AI & LangGraph
+langchain_openai==1.0.0
+langgraph==0.6.10
+langgraph-checkpoint-postgres==2.0.25
+langgraph-supervisor==0.0.29
+
+# Data Validation
+pydantic==2.10.3
+pydantic-settings==2.6.1
+
+# Optional: Streamlit UI (install separately if needed)
+# streamlit==1.41.0

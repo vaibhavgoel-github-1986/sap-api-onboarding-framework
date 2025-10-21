@@ -1,0 +1,20 @@
+# Dockerfile for Admin UI (Tool Registry Management)
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install UI dependencies
+COPY requirements-ui.txt .
+RUN pip install --no-cache-dir -r requirements-ui.txt
+
+# Copy UI files
+COPY ui/ ./ui/
+
+# Expose port
+EXPOSE 8502
+
+# Set environment variable for API base URL (can be overridden)
+ENV API_BASE_URL=http://localhost:8000
+
+# Run admin UI on port 8502
+CMD ["python", "-m", "streamlit", "run", "ui/tool_registry_admin.py", "--server.address=0.0.0.0", "--server.port=8502"]
