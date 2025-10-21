@@ -17,7 +17,7 @@ An intelligent FastAPI service that uses AI agents to query SAP systems through 
 ### Option 1: Docker (Recommended)
 
 ```bash
-# 1. Clone and navigate
+# 1. Clone and navigate df
 cd ai-powered-tools
 
 # 2. Create environment file
