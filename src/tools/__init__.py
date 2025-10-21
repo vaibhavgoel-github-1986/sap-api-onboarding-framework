@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Dict, List
 
-from .registry import (
+from .dynamic_registry import (
 	RegistryBackedSAPTool,
 	get_registered_tool,
 	get_registered_tools,

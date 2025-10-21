@@ -1,198 +1,148 @@
 # SAP Tools API 🚀
 
-An intelligent FastAPI-based service that provides AI-powered SAP technical tools using LangGraph agents.
+An intelligent FastAPI service that uses AI agents to query SAP systems through natural language.
 
-## 🌟 Features
+## ✨ Features
 
-- **🤖 AI-Powered Agent**: Natural language interface for SAP operations
-- **📊 Table Schema Retrieval**: Get detailed SAP table structures and field information
-- **💻 Source Code Access**: Fetch ABAP objects source code
-- **🔍 API Metadata**: Retrieve OData service metadata and structure
-- **🔍 Service Items**: Retrieve Service Items, CC Config Params, Material Characterstics
-- **📋 Generic SAP API**: Unified interface for all SAP OData operations
-- **🏗️ Connection Pooling**: Optimized HTTP connections for better performance
-- **📝 Comprehensive Logging**: Structured logging with request/response tracking
-- **🔒 Security**: Token-based authentication and secure configuration management
+- **🤖 AI Agent**: Ask questions in natural language, get SAP data
+- **📊 Dynamic Tool Registry**: Manage SAP tools via REST API (no code changes needed!)
+- **� Hot Reload**: Tool changes take effect immediately
+- **🔍 Multiple Tools**: Table schema, source code, service items, metadata, and more
+- **🏗️ Connection Pooling**: Optimized HTTP connections
+- **📝 Structured Logging**: Request/response tracking
+- **🎛️ Admin UI**: Optional Streamlit interface for tool management
 
-## 🏗️ Architecture
+## 🚀 Quick Start
 
+### Option 1: Docker (Recommended)
+
+```bash
+# 1. Clone and navigate
+cd ai-powered-tools
+
+# 2. Create environment file
+cp .env.example .env
+# Edit .env with your credentials
+
+# 3. Start with Docker Compose
+docker-compose up -d
+
+# 4. Check logs
+docker-compose logs -f api
 ```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   FastAPI App   │ -> │  LangGraph Agent │ -> │   SAP Systems   │
-│                 │    │                  │    │   (D2A, QHA,    │
-│  • Endpoints    │    │  • Tool Routing  │    │    RHA, etc.)   │
-│  • Validation   │    │  • LLM Reasoning │    │                 │
-│  • Error Handle │    │  • Task Planning │    │                 │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
+
+### Option 2: Python
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Set up environment
+cp .env.example .env
+# Edit .env with your credentials
+
+# Start the server
+python3 run_server.py
 ```
 
-The API will be available at: `http://localhost:8000`
-API Documentation: `http://localhost:8000/docs`
+**Endpoints:**
+- API: `http://localhost:8000`
+- Swagger Docs: `http://localhost:8000/docs`
+- Admin API: `http://localhost:8000/admin/registry/*`
+
+📖 **Full deployment guide**: See [DEPLOYMENT.md](DEPLOYMENT.md)
 
 ## 🔧 Configuration
 
-### Environment Variables
-
-Create a `.env` file with the following variables:
+Create a `.env` file with your credentials:
 
 ```env
 # Azure Authentication
 AZURE_APP_KEY=your_app_key
-AZURE_USER_ID=your_user_id
 AZURE_CLIENT_ID=your_client_id
 AZURE_CLIENT_SECRET=your_client_secret
-AZURE_TOKEN_URL=https://id.cisco.com/oauth2/default/v1/token
 
 # Azure OpenAI
 AZURE_ENDPOINT=https://chat-ai.cisco.com
-AZURE_API_VERSION=2025-04-01-preview
 AZURE_DEPLOYMENT_NAME=gpt-4.1
 
-# SAP Systems
+# SAP Credentials
 SAP_DEFAULT_SYSTEM_ID=D2A
 SAP_USERNAME=your_sap_username
 SAP_PASSWORD=your_sap_password
-
-# Logging
-LOG_LEVEL=INFO
-
-# Optional: LangSmith tracing
-LANGSMITH_API_KEY=your_langsmith_key
 ```
 
-### Supported SAP Systems
+**Supported SAP Systems:** D2A, DHA, QHA, Q2A, RHA, SHA
 
-| System ID | Environment | Description |
-|-----------|-------------|-------------|
-| `D2A` | Development | Development System |
-| `DHA` | Development | Alternative Dev System |
-| `QHA` | QA | Quality Assurance |
-| `Q2A` | QA | Alternative QA System |
-| `RHA` | Pre-Prod | Pre-Production |
-| `SHA` | Sandbox | Sandbox Environment |
+## � Usage
 
-## 📚 API Usage
-
-### Basic Query Examples
+### Query the AI Agent
 
 ```bash
-# Get table schema
-curl "http://localhost:8000/sap/tools?user_query=Get table schema for MAKT from D2A system"
-
-# Get source code  
-curl "http://localhost:8000/sap/tools?user_query=Show source code for ZCL_JIRA_ISSUES from D2A system"
-
-# Get Service Items
-curl "http://localhost:8000/sap/tools?user_query=Get Subs details for INTVG1232 from D2A System"
-
-# Get service metadata
-curl "http://localhost:8000/sap/tools?user_query=Get metadata for ZSD_PRODUCTS service, Namespace ZSB_PRODUCTS, System D2A"
+# Ask in natural language
+curl "http://localhost:8000/sap/tools?user_query=Get table schema for MAKT from D2A"
 ```
 
-### Response Format
-
-```json
-{
-    "success": true,
-    "response": "Table MAKT contains 10 fields: MANDT, MATNR, SPRAS, ...",
-    "error": null
-}
-```
-
-## 🧪 Testing
-
-Run the test suite:
+### Manage Tools Dynamically (No Code Changes!)
 
 ```bash
-# Install test dependencies
-pip install pytest pytest-cov httpx
+# List all tools
+curl "http://localhost:8000/admin/registry/tools"
 
-# Run tests
-pytest tests/ -v
+# Create a new tool
+curl -X POST "http://localhost:8000/admin/registry/tools" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "my_new_tool",
+    "description": "My custom SAP tool",
+    "service_config": {
+      "service_name": "Z_MY_SERVICE",
+      "entity_name": "MyEntity",
+      "odata_version": "v4",
+      "http_method": "GET"
+    },
+    "enabled": true
+  }'
 
-# Run with coverage
-pytest tests/ --cov=src --cov-report=html
+# Tool is available immediately (no restart needed!)
 ```
 
-## 📊 Monitoring & Logging
-
-### Structured Logging
-
-The application uses structured JSON logging for better observability:
-
-```json
-{
-  "event_type": "api_request",
-  "http_method": "GET",
-  "user_query": "Get schema for MAKT table",
-  "system_id": "D2A",
-  "timestamp": "2024-01-01T12:00:00"
-}
-```
-
-### Health Check
-
-Monitor application health:
+### Optional: Use Streamlit UI
 
 ```bash
-curl http://localhost:8000/
+pip install streamlit
+streamlit run ui/tool_registry_admin.py
 ```
 
-## 🛠️ Development
+## 🎯 Key Benefits
 
-### Project Structure
+- ✅ **No deployments** - Add/edit tools via API
+- ✅ **Instant updates** - Hot reload without server restart  
+- ✅ **Simple queries** - Natural language instead of complex API calls
+- ✅ **Automatic backups** - Safe tool modifications
+- ✅ **Version tracking** - Every tool change is versioned
+
+## 📁 Project Structure
 
 ```
 src/
-├── agents/              # LangGraph agents
-├── config.py           # Configuration management
-├── llm_model/          # Azure OpenAI integration
-├── pydantic_models/    # Data models
-├── routers/            # FastAPI routers
-├── tools/              # SAP tools for agents
-├── utils/              # Utilities (logging, HTTP client)
-└── main.py             # FastAPI application
+├── routers/            # FastAPI endpoints
+│   ├── sap_tools.py   # Main query endpoint
+│   └── admin.py       # Tool management API
+├── tools/             # Dynamic tool registry
+├── services/          # Tool storage & management
+├── agents/            # LangGraph AI agent
+└── utils/             # HTTP client, logging
 ```
 
-### Adding New Tools
+## 📚 Documentation
 
-1. Create a new tool in `src/tools/`
-2. Inherit from `BaseSAPTool`
-3. Implement required methods
-4. Add to agent in `sap_agent.py`
+- **DYNAMIC_REGISTRY_GUIDE.md** - Complete guide to tool management
+- **QUICK_START_DYNAMIC_REGISTRY.md** - Quick reference
+- **CLEANUP_COMPLETE.md** - Recent cleanup summary
 
-## 🤝 Contributing
+## 🆘 Support
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests
-5. Submit a pull request
-
-## 📝 License
-
-Vaibhav Goel
-
-## 🆘 Troubleshooting
-
-### Common Issues
-
-1. **Authentication Errors**
-   - Check Azure credentials in `.env`
-   - Verify token URL and client credentials
-
-2. **SAP Connection Issues**  
-   - Verify SAP system connectivity
-   - Check SAP username/password
-   - Ensure system ID is correct
-
-3. **Performance Issues**
-   - Check connection pool settings
-   - Monitor memory usage
-   - Review log files for bottlenecks
-
-### Support
-
-For support, please create a new issue with details
+Create an issue with details about your problem.
 
 ---

@@ -1,18 +1,19 @@
-"""Utility helpers for loading and instantiating SAP tools from a declarative registry."""
-
+"""
+Dynamic tool registry that loads from JSON storage instead of TOML.
+Maintains backward compatibility with the TOML-based system.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from functools import lru_cache
-from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional
 
-import tomllib
 from pydantic import Field, PrivateAttr
 
 from ..pydantic_models.sap_tech import SAPServiceConfig
 from ..utils.logger import logger
 from .base_sap_tool import BaseSAPTool
+from ..services.tool_registry_storage import get_tool_registry_storage
 
 
 @dataclass(slots=True)
@@ -25,10 +26,11 @@ class ToolDefinition:
     return_direct: Optional[bool] = None
     defaults: Mapping[str, Any] = field(default_factory=dict)
     prompt_hints: List[str] = field(default_factory=list)
+    enabled: bool = True
 
 
 class RegistryBackedSAPTool(BaseSAPTool):
-    """SAP tool that sources configuration and defaults from the registry."""
+    """SAP tool that sources configuration and defaults from the dynamic registry."""
 
     prompt_hints: List[str] = Field(default_factory=list)
 
@@ -38,8 +40,10 @@ class RegistryBackedSAPTool(BaseSAPTool):
     def __init__(self, definition: ToolDefinition):
         super().__init__(name=definition.name, description=definition.description)
         self._definition = definition
-        if definition.return_direct is not None:
-            self.return_direct = definition.return_direct
+        # Use definition's return_direct if specified, otherwise use False (return to LLM)
+        # When return_direct=False, the API response goes back to the LLM for processing
+        # When return_direct=True, the response is returned directly to the user
+        self.return_direct = definition.return_direct if definition.return_direct is not None else False
         self.prompt_hints = list(definition.prompt_hints)
         self._service_config = SAPServiceConfig(**definition.service_config)
         self.description = self._build_description(definition.description)
@@ -71,45 +75,56 @@ class RegistryBackedSAPTool(BaseSAPTool):
     def _build_description(self, raw_description: str) -> str:
         base_description = (raw_description or "").strip()
         namespace = self._service_config.service_namespace or "n/a"
+        
+        # Build clear, prominently displayed service details
         service_details = (
-            "Service details: "
-            f"service_name {self._service_config.service_name}, "
-            f"service_namespace {namespace}, "
-            f"entity {self._service_config.entity_name}, "
-            f"method {self._service_config.http_method}, "
-            f"odata_version {self._service_config.odata_version}."
+            "\n\n"
+            "═══════════════════════════════════════════════════════\n"
+            "� SERVICE CONFIGURATION (Use these for get_metadata first):\n"
+            "═══════════════════════════════════════════════════════\n"
+            f"service_name: {self._service_config.service_name}\n"
+            f"service_namespace: {namespace}\n"
+            f"entity_name: {self._service_config.entity_name}\n"
+            f"http_method: {self._service_config.http_method}\n"
+            f"odata_version: {self._service_config.odata_version}\n"
+            "═══════════════════════════════════════════════════════\n"
+            "\n"
+            "🔄 WORKFLOW:\n"
+            "1. Call get_metadata with the service details above (plus system_id)\n"
+            "2. Analyze the metadata response\n"
+            "3. Call this tool with system_id and query_parameters (service details auto-filled)\n"
         )
 
         if base_description:
-            return f"{base_description}\n\n{service_details}"
-        return service_details
+            return f"{base_description}{service_details}"
+        return service_details.strip()
 
 
-@lru_cache()
-def _load_registry() -> Dict[str, ToolDefinition]:
-    registry_path = Path(__file__).with_name("tool_registry.toml")
-    if not registry_path.exists():
-        logger.warning(f"Tool registry file not found at {registry_path}")
-        return {}
-
-    with registry_path.open("rb") as f:
-        raw_registry = tomllib.load(f)
-
-    tools_section = raw_registry.get("tools", {})
+def _load_registry_from_storage() -> Dict[str, ToolDefinition]:
+    """Load tool definitions from JSON storage instead of TOML."""
+    storage = get_tool_registry_storage()
+    
+    # Load only enabled tools
+    tools = storage.list_tools(enabled_only=True)
+    
     definitions: Dict[str, ToolDefinition] = {}
-    for tool_name, payload in tools_section.items():
+    for tool in tools:
         definition = ToolDefinition(
-            name=tool_name,
-            description=payload.get("description", ""),
-            service_config=payload.get("service_config", {}),
-            return_direct=payload.get("return_direct"),
-            defaults=payload.get("defaults", {}),
-            prompt_hints=payload.get("prompt_hints", {}).get("items", []),
+            name=tool.name,
+            description=tool.description,
+            service_config=tool.service_config.dict(),
+            return_direct=tool.return_direct,
+            defaults=tool.defaults.dict(),
+            prompt_hints=tool.prompt_hints.items if tool.prompt_hints else [],
+            enabled=tool.enabled,
         )
-        definitions[tool_name] = definition
+        definitions[tool.name] = definition
+    
+    logger.info(f"Loaded {len(definitions)} enabled tools from dynamic registry")
     return definitions
 
 
+# Cache for tool instances
 _TOOL_CACHE: Dict[str, RegistryBackedSAPTool] = {}
 
 
@@ -118,7 +133,7 @@ def get_registered_tool(name: str) -> RegistryBackedSAPTool:
     if name in _TOOL_CACHE:
         return _TOOL_CACHE[name]
 
-    definitions = _load_registry()
+    definitions = _load_registry_from_storage()
     definition = definitions.get(name)
     if not definition:
         raise KeyError(f"Tool '{name}' is not defined in the registry")
@@ -130,19 +145,30 @@ def get_registered_tool(name: str) -> RegistryBackedSAPTool:
 
 def get_registered_tools() -> Dict[str, RegistryBackedSAPTool]:
     """Return all registry-backed SAP tools keyed by tool name."""
-    return {name: get_registered_tool(name) for name in _load_registry().keys()}
+    definitions = _load_registry_from_storage()
+    tools = {}
+    for name, definition in definitions.items():
+        if name in _TOOL_CACHE:
+            tools[name] = _TOOL_CACHE[name]
+        else:
+            tool = RegistryBackedSAPTool(definition)
+            _TOOL_CACHE[name] = tool
+            tools[name] = tool
+    return tools
 
 
 def refresh_registry() -> None:
-    """Clear cached registry state so future lookups reload from disk."""
-    _load_registry.cache_clear()
+    """Clear cached registry state so future lookups reload from storage."""
     _TOOL_CACHE.clear()
+    logger.info("Tool registry cache cleared - will reload from storage on next access")
 
 
 def render_tool_overview() -> str:
     """Generate a prompt-friendly overview of registered tools."""
+    definitions = _load_registry_from_storage()
     sections: List[str] = []
-    for name, definition in _load_registry().items():
+    
+    for name, definition in definitions.items():
         hints = definition.prompt_hints
         hint_lines = "".join(f"  - {hint}\n" for hint in hints) if hints else ""
         section = (
@@ -158,4 +184,5 @@ def render_tool_overview() -> str:
         if hint_lines:
             section += "\nUsage Tips:\n" + hint_lines
         sections.append(section.rstrip())
+    
     return "\n\n".join(sections)

@@ -5,6 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .routers.health import router as health_router
 from .routers.sap_tools import router as sap_tools
+from .routers.admin import router as admin_router
+from .utils.http_client import get_http_client_manager
 from .utils.logger import logger
 from .config import get_settings
 
@@ -17,6 +19,11 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    # Cleanup on shutdown
+    logger.info("Closing HTTP connections...")
+    http_manager = get_http_client_manager()
+    await http_manager.close()
+    
     # Shutdown
     logger.info("SAP Tools FastAPI server shutting down...")
 
@@ -44,7 +51,8 @@ def create_app() -> FastAPI:
 
     # Include routers
     app.include_router(health_router, tags=["Health Check"])
-    app.include_router(sap_tools, tags=["SAP Tools"])
+    app.include_router(sap_tools, prefix="/sap", tags=["SAP Tools"])
+    app.include_router(admin_router, prefix="/admin/registry", tags=["Admin - Tool Registry"])
 
     return app
 

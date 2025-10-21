@@ -1,7 +1,8 @@
-"""
+""""
 API routes for SAP technical tools.
 """
 
+import time
 from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
 
@@ -78,6 +79,9 @@ async def execute_sap_query(
         HTTPException: For validation errors or system failures
     """
 
+    # Start timing the request
+    start_time = time.time()
+    
     # Input validation
     if not user_query or not user_query.strip():
         raise HTTPException(
@@ -101,7 +105,8 @@ async def execute_sap_query(
             )
 
         result = agent.invoke(
-            {"messages": [{"role": "user", "content": user_query.strip()}]}
+            {"messages": [{"role": "user", "content": user_query.strip()}]},
+            config={"configurable": {"thread_id": "default"}}
         )
 
         # Validate agent response
@@ -123,12 +128,17 @@ async def execute_sap_query(
                 status_code=500, detail="Agent returned empty response content"
             )
 
-        # Log successful response
+        # Calculate execution time
+        execution_time_ms = int((time.time() - start_time) * 1000)
+        
+        # Log successful response with timing
         log_api_response(
             status_code=200,
-            execution_time_ms=0,  # TODO: Add actual timing
+            execution_time_ms=execution_time_ms,
             success=True,
         )
+        
+        logger.info(f"SAP query completed successfully in {execution_time_ms}ms")
 
         return QueryResponse(success=True, response=response_content, error=None)
 
@@ -136,33 +146,40 @@ async def execute_sap_query(
         # Re-raise HTTP exceptions (already handled)
         raise
     except ValueError as e:
+        execution_time_ms = int((time.time() - start_time) * 1000)
         error_msg = f"Invalid input or configuration: {str(e)}"
-        logger.error(error_msg)
-        log_error_with_context(error_msg, {"user_query": user_query})
+        logger.error(f"{error_msg} (failed after {execution_time_ms}ms)")
+        log_error_with_context(error_msg, {"user_query": user_query, "execution_time_ms": execution_time_ms})
+        log_api_response(status_code=400, execution_time_ms=execution_time_ms, success=False)
         raise HTTPException(status_code=400, detail=error_msg)
     except ConnectionError as e:
+        execution_time_ms = int((time.time() - start_time) * 1000)
         error_msg = f"SAP system connection failed: {str(e)}"
-        logger.error(error_msg)
-        log_error_with_context(error_msg, {"user_query": user_query})
+        logger.error(f"{error_msg} (failed after {execution_time_ms}ms)")
+        log_error_with_context(error_msg, {"user_query": user_query, "execution_time_ms": execution_time_ms})
+        log_api_response(status_code=502, execution_time_ms=execution_time_ms, success=False)
         raise HTTPException(
             status_code=502, detail="SAP system temporarily unavailable"
         )
     except TimeoutError as e:
+        execution_time_ms = int((time.time() - start_time) * 1000)
         error_msg = f"Request timeout: {str(e)}"
-        logger.error(error_msg)
-        log_error_with_context(error_msg, {"user_query": user_query})
+        logger.error(f"{error_msg} (timed out after {execution_time_ms}ms)")
+        log_error_with_context(error_msg, {"user_query": user_query, "execution_time_ms": execution_time_ms})
+        log_api_response(status_code=504, execution_time_ms=execution_time_ms, success=False)
         raise HTTPException(
             status_code=504, detail="Request timeout - SAP system is slow"
         )
     except Exception as e:
+        execution_time_ms = int((time.time() - start_time) * 1000)
         error_msg = f"Unexpected error processing query: {str(e)}"
-        logger.error(error_msg)
+        logger.error(f"{error_msg} (failed after {execution_time_ms}ms)")
         log_error_with_context(
-            error_msg, {"user_query": user_query, "error_type": type(e).__name__}
+            error_msg, {"user_query": user_query, "error_type": type(e).__name__, "execution_time_ms": execution_time_ms}
         )
 
-        # Log failed response
-        log_api_response(status_code=500, execution_time_ms=0, success=False)
+        # Log failed response with timing
+        log_api_response(status_code=500, execution_time_ms=execution_time_ms, success=False)
 
         # Don't expose internal errors to client
         raise HTTPException(

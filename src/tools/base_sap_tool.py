@@ -32,7 +32,9 @@ class BaseSAPTool(BaseTool):
 
     # Common configuration
     args_schema: Type[BaseModel] = GenericAPIRequest
-    return_direct: bool = settings.tool_return_direct
+    # Default to False: return response to LLM for processing
+    # Tools can override this to True to return directly to user
+    return_direct: bool = False
 
     @abstractmethod
     def get_service_config(self, **kwargs) -> SAPServiceConfig:
