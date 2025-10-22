@@ -78,34 +78,9 @@ def get_settings() -> Settings:
 
 # SAP System configurations
 SAP_SYSTEMS: Dict[str, Dict[str, Any]] = {
-    "QHA": {
-        "hostname": "https://saphec-qa.cisco.com:44300",
-        "client_id": "300",
-        "description": "QA System"
-    },
-    "Q2A": {
-        "hostname": "https://saphec-qa2.cisco.com:44300", 
-        "client_id": "300",
-        "description": "QA2 System"
-    },
-    "RHA": {
-        "hostname": "https://saphec-preprod.cisco.com:44300",
-        "client_id": "300", 
-        "description": "Pre-Production System"
-    },
-    "D2A": {
-        "hostname": "https://saphec-dv2.cisco.com:44300",
-        "client_id": "120",
-        "description": "Development System"
-    },
-    "DHA": {
-        "hostname": "https://saphec-dev.cisco.com:44300",
-        "client_id": "120",
-        "description": "Development System"
-    },
-    "SHA": {
-        "hostname": "https://saphec-sb.cisco.com:44300",
-        "client_id": "320",
-        "description": "Sandbox System"
+    "DEV": {
+        "hostname": " ",
+        "client_id": "100",
+        "description": "Dev System"
     }
 }
